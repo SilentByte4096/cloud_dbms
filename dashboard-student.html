@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard - StudyHub</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>📚 StudyHub</h2>
+                <div class="user-info" id="userInfo">
+                    User info will be loaded here
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" onclick="showSection('overview')">
+                    🏠 Overview
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('resources')">
+                    📖 Resources
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('assignments')">
+                    📝 Assignments
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('flashcards')">
+                    🃏 Flashcards
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('timer')">
+                    ⏰ Study Timer
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('ai-assistant')">
+                    🤖 AI Assistant
+                </a>
+                <a href="#" class="nav-item" onclick="showSection('grades')">
+                    📊 Grades
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- Overview Section -->
+            <section id="overview" class="content-section active">
+                <header class="section-header">
+                    <h1>Welcome to your Dashboard</h1>
+                    <p>Here's what's happening in your studies</p>
+                </header>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Resources Uploaded</h3>
+                        <div class="stat-value" id="resourceCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Assignments Due</h3>
+                        <div class="stat-value" id="assignmentCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Flashcard Sets</h3>
+                        <div class="stat-value" id="flashcardCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Study Hours</h3>
+                        <div class="stat-value" id="studyHours">0</div>
+                    </div>
+                </div>
+
+                <div class="recent-activity">
+                    <h2>Recent Activity</h2>
+                    <div id="recentActivity" class="activity-list">
+                        <!-- Recent activity will be loaded here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Resources Section -->
+            <section id="resources" class="content-section">
+                <header class="section-header">
+                    <h1>Study Resources</h1>
+                    <button class="btn-primary" onclick="showUploadModal()">Upload Resource</button>
+                </header>
+
+                <div class="filters">
+                    <select id="subjectFilter" onchange="filterResources()">
+                        <option value="">All Subjects</option>
+                    </select>
+                    <select id="chapterFilter" onchange="filterResources()">
+                        <option value="">All Chapters</option>
+                    </select>
+                    <select id="typeFilter" onchange="filterResources()">
+                        <option value="">All Types</option>
+                        <option value="notes">Notes</option>
+                        <option value="code">Code</option>
+                        <option value="video">Videos</option>
+                        <option value="other">Others</option>
+                    </select>
+                </div>
+
+                <div id="resourcesGrid" class="resources-grid">
+                    <!-- Resources will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Assignments Section -->
+            <section id="assignments" class="content-section">
+                <header class="section-header">
+                    <h1>Assignments</h1>
+                </header>
+
+                <div class="assignment-tabs">
+                    <button class="tab-btn active" onclick="showAssignments('pending')">Pending</button>
+                    <button class="tab-btn" onclick="showAssignments('submitted')">Submitted</button>
+                    <button class="tab-btn" onclick="showAssignments('graded')">Graded</button>
+                </div>
+
+                <div id="assignmentsList" class="assignments-list">
+                    <!-- Assignments will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Flashcards Section -->
+            <section id="flashcards" class="content-section">
+                <header class="section-header">
+                    <h1>Flashcards</h1>
+                    <button class="btn-primary" onclick="showCreateFlashcardModal()">Create New Set</button>
+                </header>
+
+                <div id="flashcardSets" class="flashcard-sets">
+                    <!-- Flashcard sets will be loaded here -->
+                </div>
+
+                <div id="flashcardViewer" class="flashcard-viewer" style="display: none;">
+                    <div class="flashcard-controls">
+                        <button onclick="closeFlashcardViewer()" class="btn-secondary">Back to Sets</button>
+                        <span id="cardCounter">1 / 10</span>
+                        <button onclick="shuffleCards()" class="btn-secondary">Shuffle</button>
+                    </div>
+                    <div class="flashcard" onclick="flipCard()">
+                        <div class="flashcard-inner">
+                            <div class="flashcard-front">
+                                <div id="cardQuestion">Question will appear here</div>
+                            </div>
+                            <div class="flashcard-back">
+                                <div id="cardAnswer">Answer will appear here</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flashcard-nav">
+                        <button onclick="previousCard()" class="btn-secondary">Previous</button>
+                        <button onclick="nextCard()" class="btn-primary">Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Study Timer Section -->
+            <section id="timer" class="content-section">
+                <header class="section-header">
+                    <h1>Study Timer</h1>
+                    <p>Use the Pomodoro technique to stay focused</p>
+                </header>
+
+                <div class="timer-container">
+                    <div class="timer-display">
+                        <div class="timer-circle">
+                            <svg class="timer-svg" viewBox="0 0 100 100">
+                                <circle class="timer-circle-bg" cx="50" cy="50" r="45"></circle>
+                                <circle class="timer-circle-progress" cx="50" cy="50" r="45" id="timerProgress"></circle>
+                            </svg>
+                            <div class="timer-time" id="timerTime">25:00</div>
+                            <div class="timer-label" id="timerLabel">Work Session</div>
+                        </div>
+                    </div>
+                    
+                    <div class="timer-controls">
+                        <button id="timerBtn" class="btn-primary btn-large" onclick="toggleTimer()">Start</button>
+                        <button class="btn-secondary" onclick="resetTimer()">Reset</button>
+                    </div>
+
+                    <div class="timer-settings">
+                        <div class="setting-group">
+                            <label>Work Duration (minutes)</label>
+                            <input type="number" id="workDuration" value="25" min="1" max="60">
+                        </div>
+                        <div class="setting-group">
+                            <label>Break Duration (minutes)</label>
+                            <input type="number" id="breakDuration" value="5" min="1" max="30">
+                        </div>
+                    </div>
+
+                    <div class="timer-stats">
+                        <h3>Today's Stats</h3>
+                        <div class="stats-row">
+                            <span>Sessions Completed: <strong id="sessionsCompleted">0</strong></span>
+                            <span>Total Study Time: <strong id="totalStudyTime">0h 0m</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AI Assistant Section -->
+            <section id="ai-assistant" class="content-section">
+                <header class="section-header">
+                    <h1>AI Study Assistant</h1>
+                    <p>Upload documents for AI-powered summaries and study plans</p>
+                </header>
+
+                <div class="ai-upload-area">
+                    <div class="upload-zone" id="aiUploadZone">
+                        <div class="upload-icon">🤖</div>
+                        <h3>Drop your document here</h3>
+                        <p>Or click to select a file (PDF, DOCX, TXT)</p>
+                        <input type="file" id="aiFileInput" accept=".pdf,.docx,.txt" onchange="handleAIFileUpload(event)">
+                    </div>
+                </div>
+
+                <div id="aiResults" class="ai-results" style="display: none;">
+                    <div class="ai-result-card">
+                        <h3>📄 Document Summary</h3>
+                        <div id="documentSummary" class="ai-content">
+                            <!-- AI summary will appear here -->
+                        </div>
+                    </div>
+                    
+                    <div class="ai-result-card">
+                        <h3>📋 Study Plan</h3>
+                        <div id="studyPlan" class="ai-content">
+                            <!-- AI study plan will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Grades Section -->
+            <section id="grades" class="content-section">
+                <header class="section-header">
+                    <h1>Grades & Feedback</h1>
+                </header>
+
+                <div class="grade-summary">
+                    <div class="grade-card">
+                        <h3>Overall GPA</h3>
+                        <div class="grade-value" id="overallGPA">-</div>
+                    </div>
+                    <div class="grade-card">
+                        <h3>Assignments Graded</h3>
+                        <div class="grade-value" id="gradedCount">0</div>
+                    </div>
+                </div>
+
+                <div id="gradesList" class="grades-list">
+                    <!-- Grades will be loaded here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Upload Resource Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeUploadModal()">&times;</span>
+            <h2>Upload Resource</h2>
+            <form onsubmit="handleResourceUpload(event)">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="resourceTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" id="resourceSubject" required>
+                </div>
+                <div class="form-group">
+                    <label>Chapter</label>
+                    <input type="text" id="resourceChapter" required>
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="resourceType" required>
+                        <option value="">Select type</option>
+                        <option value="notes">Notes</option>
+                        <option value="code">Code</option>
+                        <option value="video">Video</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="resourceDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>File</label>
+                    <input type="file" id="resourceFile" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Flashcard Set Modal -->
+    <div id="createFlashcardModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeCreateFlashcardModal()">&times;</span>
+            <h2>Create Flashcard Set</h2>
+            <form onsubmit="handleCreateFlashcardSet(event)">
+                <div class="form-group">
+                    <label>Set Name</label>
+                    <input type="text" id="flashcardSetName" required>
+                </div>
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" id="flashcardSubject" required>
+                </div>
+                <div class="flashcard-inputs" id="flashcardInputs">
+                    <div class="flashcard-input-pair">
+                        <div class="form-group">
+                            <label>Question 1</label>
+                            <textarea class="flashcard-question" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Answer 1</label>
+                            <textarea class="flashcard-answer" required></textarea>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary btn-small" onclick="addFlashcardInput()">Add Another Card</button>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCreateFlashcardModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Set</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/student-dashboard.js"></script>
+</body>
+</html>

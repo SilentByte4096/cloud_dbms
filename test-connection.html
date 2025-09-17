@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>StudyHub Connection Test</title>
+</head>
+<body>
+    <h1>StudyHub Connection Test</h1>
+    <div id="status">Testing connection...</div>
+    <div id="result"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/supabase-config.js"></script>
+    
+    <script>
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            
+            // Wait for Supabase to initialize
+            let attempts = 0;
+            while (!window.supabase && attempts < 50) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            
+            if (!window.supabase) {
+                statusDiv.innerHTML = '<span style="color: red;">❌ Supabase failed to initialize</span>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<span style="color: green;">✅ Supabase initialized successfully</span>';
+            
+            try {
+                // Test database connection
+                const { data, error } = await window.supabase.from('subjects').select('name').limit(1);
+                
+                if (error) {
+                    resultDiv.innerHTML = `<span style="color: orange;">⚠️ Database connection error: ${error.message}</span>`;
+                } else {
+                    resultDiv.innerHTML = '<span style="color: green;">✅ Database connection successful</span>';
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Connection test failed: ${err.message}</span>`;
+            }
+        }
+        
+        // Run test when page loads
+        window.addEventListener('load', testConnection);
+    </script>
+</body>
+</html>

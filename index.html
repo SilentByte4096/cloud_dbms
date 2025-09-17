@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyHub - Your Learning Companion</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <div class="landing-container">
+        <header class="landing-header">
+            <div class="container">
+                <div class="logo">
+                    <h1>📚 StudyHub</h1>
+                </div>
+                <nav>
+                    <button class="btn-primary" onclick="showAuth('login')">Login</button>
+                    <button class="btn-secondary" onclick="showAuth('signup')">Sign Up</button>
+                </nav>
+            </div>
+        </header>
+
+        <main class="landing-main">
+            <div class="container">
+                <div class="hero">
+                    <h1>Your Complete Learning Platform</h1>
+                    <p>Connect students and teachers in one powerful educational hub</p>
+                    <div class="hero-buttons">
+                        <button class="btn-primary btn-large" onclick="showAuth('signup')">Get Started</button>
+                        <button class="btn-secondary btn-large" onclick="showAuth('login')">Login</button>
+                    </div>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <h3>Study Resources</h3>
+                        <p>Organize and share study materials by subject and chapter</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📝</div>
+                        <h3>Assignments</h3>
+                        <p>Create, submit, and grade assignments seamlessly</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>AI Assistant</h3>
+                        <p>Get document summaries and personalized study plans</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🃏</div>
+                        <h3>Flashcards</h3>
+                        <p>Create and study with interactive flashcards</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⏰</div>
+                        <h3>Study Timer</h3>
+                        <p>Stay focused with Pomodoro technique timer</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⭐</div>
+                        <h3>Peer Reviews</h3>
+                        <p>Rate and comment on shared resources</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAuth()">&times;</span>
+            
+            <!-- Login Form -->
+            <div id="loginForm" class="auth-form">
+                <h2>Welcome Back</h2>
+                <form onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">Login</button>
+                </form>
+                <p class="auth-switch">
+                    Don't have an account? 
+                    <a href="#" onclick="showAuth('signup')">Sign up</a>
+                </p>
+            </div>
+
+            <!-- Signup Form -->
+            <div id="signupForm" class="auth-form" style="display: none;">
+                <h2>Join StudyHub</h2>
+                <form onsubmit="handleSignup(event)">
+                    <div class="form-group">
+                        <label for="signupName">Full Name</label>
+                        <input type="text" id="signupName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupEmail">Email</label>
+                        <input type="email" id="signupEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupPassword">Password</label>
+                        <input type="password" id="signupPassword" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="userRole">I am a:</label>
+                        <select id="userRole" required>
+                            <option value="">Select role</option>
+                            <option value="student">Student</option>
+                            <option value="teacher">Teacher</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">Sign Up</button>
+                </form>
+                <p class="auth-switch">
+                    Already have an account? 
+                    <a href="#" onclick="showAuth('login')">Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+</body>
+</html>

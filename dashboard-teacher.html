@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard - StudyHub</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>📚 StudyHub</h2>
+                <div class="user-info" id="userInfo">
+                    <!-- User info will be loaded here -->
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="overview" onclick="showSection('overview')">🏠 Overview</a>
+                <a href="#" class="nav-item" data-section="classes" onclick="showSection('classes')">👥 Classes</a>
+                <a href="#" class="nav-item" data-section="assignments" onclick="showSection('assignments')">📝 Assignments</a>
+                <a href="#" class="nav-item" data-section="submissions" onclick="showSection('submissions')">📤 Submissions</a>
+                <a href="#" class="nav-item" data-section="resources" onclick="showSection('resources')">📖 Resources</a>
+                <a href="#" class="nav-item" data-section="grades" onclick="showSection('grades')">📊 Grades</a>
+            </nav>
+            <div class="sidebar-footer">
+                <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- Overview Section -->
+            <section id="overview" class="content-section active">
+                <header class="section-header">
+                    <h1>Teacher Dashboard</h1>
+                    <p>Manage your classes and assignments</p>
+                </header>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Classes</h3>
+                        <div class="stat-value" id="classCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Assignments</h3>
+                        <div class="stat-value" id="assignmentCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pending Submissions</h3>
+                        <div class="stat-value" id="submissionCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Students</h3>
+                        <div class="stat-value" id="studentCount">0</div>
+                    </div>
+                </div>
+
+                <div class="recent-activity">
+                    <h2>Recent Submissions</h2>
+                    <div id="recentSubmissions" class="activity-list">
+                        <!-- Recent submissions will be loaded here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Classes Section -->
+            <section id="classes" class="content-section">
+                <header class="section-header">
+                    <h1>My Classes</h1>
+                    <button class="btn-primary" onclick="showCreateClassModal()">Create Class</button>
+                </header>
+
+                <div id="classesList" class="classes-list">
+                    <!-- Classes will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Assignments Section -->
+            <section id="assignments" class="content-section">
+                <header class="section-header">
+                    <h1>Assignments</h1>
+                    <button class="btn-primary" onclick="showCreateAssignmentModal()">Create Assignment</button>
+                </header>
+
+                <div id="assignmentsList" class="assignments-list">
+                    <!-- Assignments will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Submissions Section -->
+            <section id="submissions" class="content-section">
+                <header class="section-header">
+                    <h1>Student Submissions</h1>
+                </header>
+
+                <div class="submission-tabs">
+                    <button class="tab-btn active" onclick="showSubmissions('pending')">Pending Review</button>
+                    <button class="tab-btn" onclick="showSubmissions('graded')">Graded</button>
+                </div>
+
+                <div id="submissionsList" class="submissions-list">
+                    <!-- Submissions will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Resources Section -->
+            <section id="resources" class="content-section">
+                <header class="section-header">
+                    <h1>Class Resources</h1>
+                </header>
+
+                <div id="resourcesGrid" class="resources-grid">
+                    <!-- Resources will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Grades Section -->
+            <section id="grades" class="content-section">
+                <header class="section-header">
+                    <h1>Grade Management</h1>
+                </header>
+
+                <div class="grade-filters">
+                    <label for="classFilterGrades" class="visually-hidden">Filter by Class</label>
+                    <select id="classFilterGrades" onchange="filterGrades()" title="Filter by class">
+                        <option value="">All Classes</option>
+                    </select>
+                    <label for="assignmentFilterGrades" class="visually-hidden">Filter by Assignment</label>
+                    <select id="assignmentFilterGrades" onchange="filterGrades()" title="Filter by assignment">
+                        <option value="">All Assignments</option>
+                    </select>
+                </div>
+
+                <div id="gradesTable" class="grades-table">
+                    <!-- Grades table will be loaded here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Create Class Modal -->
+    <div id="createClassModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="createClassTitle">
+        <div class="modal-content">
+            <span class="close" onclick="closeCreateClassModal()">&times;</span>
+            <h2 id="createClassTitle">Create New Class</h2>
+            <form onsubmit="handleCreateClass(event)">
+                <div class="form-group">
+                    <label for="className">Class Name</label>
+                    <input type="text" id="className" placeholder="Enter class name" required>
+                </div>
+                <div class="form-group">
+                    <label for="classSubject">Subject</label>
+                    <input type="text" id="classSubject" placeholder="Enter subject" required>
+                </div>
+                <div class="form-group">
+                    <label for="classDescription">Description</label>
+                    <textarea id="classDescription" rows="3" placeholder="Describe the class"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="classCode">Class Code (for students to join)</label>
+                    <input type="text" id="classCode" placeholder="e.g., CS101-2024" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCreateClassModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Class</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Assignment Modal -->
+    <div id="createAssignmentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="createAssignmentTitle">
+        <div class="modal-content">
+            <span class="close" onclick="closeCreateAssignmentModal()">&times;</span>
+            <h2 id="createAssignmentTitle">Create Assignment</h2>
+            <form id="createAssignmentForm" onsubmit="handleCreateAssignment(event)">
+                <div class="form-group">
+                    <label for="assignmentTitle">Assignment Title</label>
+                    <input type="text" id="assignmentTitle" placeholder="Enter assignment title" required>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentClass">Class</label>
+                    <select id="assignmentClass" title="Select class" required>
+                        <option value="">Select Class</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentDescription">Description</label>
+                    <textarea id="assignmentDescription" rows="4" placeholder="Enter assignment details" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentDueDate">Due Date</label>
+                    <input type="datetime-local" id="assignmentDueDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="assignmentMaxPoints">Maximum Points</label>
+                    <input type="number" id="assignmentMaxPoints" placeholder="e.g., 100" min="1" value="100" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCreateAssignmentModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Assignment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Grade Submission Modal -->
+    <div id="gradeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="gradeModalTitle">
+        <div class="modal-content">
+            <span class="close" onclick="closeGradeModal()">&times;</span>
+            <h2 id="gradeModalTitle">Grade Submission</h2>
+            <div id="submissionDetails">
+                <!-- Submission details will be loaded here -->
+            </div>
+            <form id="gradeForm" onsubmit="handleGradeSubmit(event)">
+                <div class="form-group">
+                    <label id="gradeLabel" for="submissionGrade">Grade (out of <span id="maxPointsDisplay">100</span>)</label>
+                    <input type="number" id="submissionGrade" placeholder="Enter grade" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="submissionFeedback">Feedback</label>
+                    <textarea id="submissionFeedback" rows="4" placeholder="Provide detailed feedback..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeGradeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Grade</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/teacher-dashboard.js"></script>
+</body>
+</html>
