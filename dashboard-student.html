@@ -111,6 +111,7 @@
             <section id="assignments" class="content-section">
                 <header class="section-header">
                     <h1>Assignments</h1>
+                    <button class="btn-primary" onclick="showJoinClassModal()">Join Class</button>
                 </header>
 
                 <div class="assignment-tabs">
@@ -207,19 +208,22 @@
             <section id="ai-assistant" class="content-section">
                 <header class="section-header">
                     <h1>AI Study Assistant</h1>
-                    <p>Upload documents for AI-powered summaries and study plans</p>
+                    <p>Select your uploaded resources to generate AI-powered summaries and study plans</p>
                 </header>
 
-                <div class="ai-upload-area">
-                    <div class="upload-zone" id="aiUploadZone">
-                        <div class="upload-icon">🤖</div>
-                        <h3>Drop your document here</h3>
-                        <p>Or click to select a file (PDF, DOCX, TXT)</p>
-                        <input type="file" id="aiFileInput" accept=".pdf,.docx,.txt" onchange="handleAIFileUpload(event)">
+                <div class="ai-resources-list">
+                    <h3>Your Uploaded Resources</h3>
+                    <div id="aiResourcesList" class="ai-resources-grid">
+                        <!-- User's resources will be loaded here -->
                     </div>
                 </div>
 
                 <div id="aiResults" class="ai-results" style="display: none;">
+                    <div class="ai-result-header">
+                        <h3>📄 Analysis for: <span id="selectedResourceName"></span></h3>
+                        <button class="btn-secondary btn-small" onclick="closeAIResults()">Back to Resources</button>
+                    </div>
+                    
                     <div class="ai-result-card">
                         <h3>📄 Document Summary</h3>
                         <div id="documentSummary" class="ai-content">
@@ -232,6 +236,14 @@
                         <div id="studyPlan" class="ai-content">
                             <!-- AI study plan will appear here -->
                         </div>
+                    </div>
+                    
+                    <div class="ai-result-card">
+                        <h3>🃏 Suggested Flashcards</h3>
+                        <div id="suggestedFlashcards" class="ai-content">
+                            <!-- AI-suggested flashcards will appear here -->
+                        </div>
+                        <button class="btn-primary" onclick="createFlashcardsFromAI()">Create These Flashcards</button>
                     </div>
                 </div>
             </section>
@@ -334,6 +346,24 @@
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" onclick="closeCreateFlashcardModal()">Cancel</button>
                     <button type="submit" class="btn-primary">Create Set</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Join Class Modal -->
+    <div id="joinClassModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeJoinClassModal()">&times;</span>
+            <h2>Join a Class</h2>
+            <form onsubmit="handleJoinClass(event)">
+                <div class="form-group">
+                    <label for="classCode">Class Code</label>
+                    <input type="text" id="classCode" placeholder="Enter the class code provided by your teacher" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeJoinClassModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Join Class</button>
                 </div>
             </form>
         </div>

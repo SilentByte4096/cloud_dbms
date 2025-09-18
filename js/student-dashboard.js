@@ -136,6 +136,9 @@ function showSection(sectionName) {
         case 'flashcards':
             loadFlashcardSets();
             break;
+        case 'ai-assistant':
+            loadUserResourcesForAI();
+            break;
         case 'grades':
             loadGrades();
             break;
@@ -145,7 +148,7 @@ function showSection(sectionName) {
 // Resources functions
 async function loadResources() {
     try {
-        window.utils.showLoader(document.getElementById('resourcesGrid'));
+        window.utils.showLoading(document.getElementById('resourcesGrid'));
         
         const { data: resources, error } = await window.supabase
             .from('resources')
@@ -153,9 +156,7 @@ async function loadResources() {
                 *,
                 subjects(name),
                 chapters(name),
-                profiles(full_name),
-                resource_ratings(rating),
-                resource_comments(id)
+                profiles(full_name)
             `)
             .eq('is_public', true)
             .order('created_at', { ascending: false });
@@ -559,6 +560,95 @@ async function handleResourceUpload(event) {
     } catch (error) {
         console.error('Error uploading resource:', error);
         window.utils.showNotification(`Failed to upload resource: ${error.message}`, 'error');
+    }
+}
+
+// Join Class functions
+function showJoinClassModal() {
+    const modal = document.getElementById('joinClassModal');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+function closeJoinClassModal() {
+    const modal = document.getElementById('joinClassModal');
+    if (modal) {
+        modal.style.display = 'none';
+        const form = modal.querySelector('form');
+        if (form) form.reset();
+    }
+}
+
+async function handleJoinClass(event) {
+    event.preventDefault();
+    
+    const classCodeInput = document.getElementById('classCode');
+    if (!classCodeInput) {
+        window.utils.showNotification('Form element not found', 'error');
+        return;
+    }
+    
+    const classCode = classCodeInput.value.trim().toUpperCase();
+    if (!classCode) {
+        window.utils.showNotification('Please enter a class code', 'error');
+        classCodeInput.focus();
+        return;
+    }
+    
+    try {
+        const userId = window.appState.currentUser.id;
+        
+        // Find the class by class code
+        const { data: classData, error: classError } = await window.supabase
+            .from('classes')
+            .select('*')
+            .eq('class_code', classCode)
+            .single();
+        
+        if (classError) {
+            if (classError.code === 'PGRST116') {
+                window.utils.showNotification('Class not found. Please check the class code.', 'error');
+            } else {
+                throw classError;
+            }
+            return;
+        }
+        
+        // Check if already enrolled
+        const { data: existingEnrollment } = await window.supabase
+            .from('class_enrollments')
+            .select('id')
+            .eq('class_id', classData.id)
+            .eq('student_id', userId)
+            .maybeSingle();
+        
+        if (existingEnrollment) {
+            window.utils.showNotification('You are already enrolled in this class', 'warning');
+            closeJoinClassModal();
+            return;
+        }
+        
+        // Enroll student in class
+        const { error: enrollError } = await window.supabase
+            .from('class_enrollments')
+            .insert([{
+                class_id: classData.id,
+                student_id: userId
+            }]);
+        
+        if (enrollError) throw enrollError;
+        
+        window.utils.showNotification(`Successfully joined "${classData.name}"!`, 'success');
+        closeJoinClassModal();
+        
+        // Reload assignments to show new class assignments
+        await loadAssignments();
+        await loadDashboardData();
+        
+    } catch (error) {
+        console.error('Error joining class:', error);
+        window.utils.showNotification(`Failed to join class: ${error.message}`, 'error');
     }
 }
 
@@ -1130,22 +1220,74 @@ function initializeTimerSettings() {
 }
 
 // AI Assistant functions
-function handleAIFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+async function loadUserResourcesForAI() {
+    try {
+        const userId = window.appState.currentUser.id;
+        
+        const { data: resources, error } = await window.supabase
+            .from('resources')
+            .select(`
+                *,
+                subjects(name),
+                chapters(name)
+            `)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
 
-    // Show AI results with placeholder content
+        if (error) throw error;
+
+        const container = document.getElementById('aiResourcesList');
+        if (!container) return;
+        
+        if (resources.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📚</div>
+                    <h3>No Resources Yet</h3>
+                    <p>Upload some resources first to use AI analysis</p>
+                    <button class="btn-primary" onclick="showSection('resources')">Go to Resources</button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = resources.map(resource => `
+            <div class="ai-resource-card" onclick="analyzeResource('${resource.id}', '${resource.title}')">
+                <div class="ai-resource-type">${resource.resource_type}</div>
+                <h4>${resource.title}</h4>
+                <div class="ai-resource-meta">
+                    ${resource.subjects?.name || 'General'} ${resource.chapters?.name ? ' • ' + resource.chapters.name : ''}
+                </div>
+                <div class="ai-resource-meta">
+                    ${window.utils.formatTimeAgo(resource.created_at)}
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading resources for AI:', error);
+        window.utils.showNotification('Failed to load resources', 'error');
+    }
+}
+
+function analyzeResource(resourceId, resourceTitle) {
+    // Show AI results
     const aiResults = document.getElementById('aiResults');
-    if (aiResults) aiResults.style.display = 'block';
+    const resourcesList = document.getElementById('aiResourcesList');
+    const selectedResourceName = document.getElementById('selectedResourceName');
     
-    // Simulate AI processing
+    if (aiResults) aiResults.style.display = 'block';
+    if (resourcesList) resourcesList.parentElement.style.display = 'none';
+    if (selectedResourceName) selectedResourceName.textContent = resourceTitle;
+    
+    // Show loading states
     const documentSummary = document.getElementById('documentSummary');
     const studyPlan = document.getElementById('studyPlan');
+    const suggestedFlashcards = document.getElementById('suggestedFlashcards');
     
     if (documentSummary) {
         documentSummary.innerHTML = `
             <div class="loading-spinner"></div>
-            <p>Processing document...</p>
+            <p>Analyzing document...</p>
         `;
     }
     
@@ -1155,18 +1297,35 @@ function handleAIFileUpload(event) {
             <p>Generating study plan...</p>
         `;
     }
+    
+    if (suggestedFlashcards) {
+        suggestedFlashcards.innerHTML = `
+            <div class="loading-spinner"></div>
+            <p>Creating flashcard suggestions...</p>
+        `;
+    }
 
     // Simulate API delay
     setTimeout(() => {
-        const summary = generatePlaceholderSummary(file.name);
-        const plan = generatePlaceholderStudyPlan(file.name);
+        const summary = generatePlaceholderSummary(resourceTitle);
+        const plan = generatePlaceholderStudyPlan(resourceTitle);
+        const flashcards = generatePlaceholderFlashcards(resourceTitle);
         
         if (documentSummary) documentSummary.innerHTML = summary;
         if (studyPlan) studyPlan.innerHTML = plan;
+        if (suggestedFlashcards) suggestedFlashcards.innerHTML = flashcards;
 
         // Save to database
-        saveAISummary(file, summary, plan);
+        saveAISummary(resourceId, resourceTitle, summary, plan, flashcards);
     }, 3000);
+}
+
+function closeAIResults() {
+    const aiResults = document.getElementById('aiResults');
+    const resourcesList = document.getElementById('aiResourcesList');
+    
+    if (aiResults) aiResults.style.display = 'none';
+    if (resourcesList) resourcesList.parentElement.style.display = 'block';
 }
 
 function generatePlaceholderSummary(fileName) {
@@ -1181,24 +1340,126 @@ function generatePlaceholderSummary(fileName) {
 
 function generatePlaceholderStudyPlan(fileName) {
     return `
-        <h4>Recommended Study Plan</h4>
+        <h4>Recommended Study Plan for "${fileName}"</h4>
         <ol>
-            <li><strong>Week 1-2:</strong> Review fundamental concepts and terminology</li>
-            <li><strong>Week 3-4:</strong> Practice problem-solving with basic examples</li>
+            <li><strong>Week 1-2:</strong> Review fundamental concepts and terminology from the resource</li>
+            <li><strong>Week 3-4:</strong> Practice problem-solving with basic examples covered in the material</li>
             <li><strong>Week 5-6:</strong> Work through intermediate exercises and case studies</li>
             <li><strong>Week 7-8:</strong> Complete advanced problems and review challenging areas</li>
         </ol>
         <h4>Study Tips</h4>
         <ul>
-            <li>Create flashcards for key terms and concepts</li>
+            <li>Create flashcards for key terms and concepts from this resource</li>
             <li>Use the Pomodoro technique for focused study sessions</li>
             <li>Practice explaining concepts to others</li>
             <li>Take regular breaks and review material multiple times</li>
+            <li>Create connections between this resource and your other study materials</li>
         </ul>
     `;
 }
 
-async function saveAISummary(file, summary, studyPlan) {
+function generatePlaceholderFlashcards(resourceTitle) {
+    const flashcardSets = [
+        {
+            topic: "Key Concepts",
+            cards: [
+                { question: "What is the main topic covered in this resource?", answer: "Based on '" + resourceTitle + "', this covers fundamental concepts in the subject area." },
+                { question: "What are the key learning objectives?", answer: "Understanding core principles, practical applications, and problem-solving techniques." },
+                { question: "How does this topic relate to other subjects?", answer: "This material connects to multiple areas of study and builds foundational knowledge." }
+            ]
+        },
+        {
+            topic: "Practical Applications",
+            cards: [
+                { question: "Where can these concepts be applied?", answer: "Real-world scenarios, academic projects, and professional environments." },
+                { question: "What are common misconceptions about this topic?", answer: "Students often confuse theoretical concepts with practical implementations." }
+            ]
+        }
+    ];
+    
+    let html = '';
+    flashcardSets.forEach(set => {
+        html += `<h4>${set.topic}</h4><div class="flashcard-preview-grid">`;
+        set.cards.forEach((card, index) => {
+            html += `
+                <div class="flashcard-preview">
+                    <div class="flashcard-preview-front">
+                        <strong>Q:</strong> ${card.question}
+                    </div>
+                    <div class="flashcard-preview-back">
+                        <strong>A:</strong> ${card.answer}
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    });
+    
+    return html;
+}
+
+let currentAISuggestedCards = [];
+
+function createFlashcardsFromAI() {
+    // This would create flashcards from the AI suggestions
+    const resourceTitle = document.getElementById('selectedResourceName')?.textContent || 'AI Generated';
+    
+    // Create a flashcard set with AI suggested cards
+    const setName = `AI Study Cards - ${resourceTitle}`;
+    
+    window.utils.showNotification('Creating flashcard set from AI suggestions...', 'info');
+    
+    // Simulate creation process
+    setTimeout(async () => {
+        try {
+            const userId = window.appState.currentUser.id;
+            
+            // Create flashcard set
+            const { data: set, error: setError } = await window.supabase
+                .from('flashcard_sets')
+                .insert([{
+                    user_id: userId,
+                    name: setName,
+                    subject: 'AI Generated',
+                    description: `AI-generated flashcards from resource: ${resourceTitle}`
+                }])
+                .select()
+                .single();
+
+            if (setError) throw setError;
+
+            // Create sample flashcards
+            const sampleCards = [
+                { question: "What are the key concepts in this resource?", answer: "Based on the analysis, this resource covers fundamental principles and practical applications." },
+                { question: "How can this knowledge be applied?", answer: "These concepts can be used in real-world scenarios and academic projects." },
+                { question: "What should I remember most?", answer: "Focus on understanding the core principles and their interconnections." }
+            ];
+            
+            const flashcards = sampleCards.map((card, index) => ({
+                set_id: set.id,
+                question: card.question,
+                answer: card.answer,
+                order_index: index
+            }));
+
+            const { error: cardsError } = await window.supabase
+                .from('flashcards')
+                .insert(flashcards);
+
+            if (cardsError) throw cardsError;
+
+            window.utils.showNotification('Flashcard set created successfully!', 'success');
+            
+            // Refresh dashboard stats
+            await loadDashboardData();
+        } catch (error) {
+            console.error('Error creating AI flashcards:', error);
+            window.utils.showNotification('Failed to create flashcard set', 'error');
+        }
+    }, 1000);
+}
+
+async function saveAISummary(resourceId, resourceTitle, summary, studyPlan, flashcards) {
     try {
         const userId = window.appState.currentUser.id;
         
@@ -1206,10 +1467,11 @@ async function saveAISummary(file, summary, studyPlan) {
             .from('ai_summaries')
             .insert([{
                 user_id: userId,
-                file_name: file.name,
-                file_url: '', // Would be actual file URL in real implementation
+                file_name: resourceTitle,
+                file_url: '', // Resource URL would be fetched from resources table
                 summary: summary,
-                study_plan: studyPlan
+                study_plan: studyPlan,
+                resource_id: resourceId // Link to the actual resource
             }]);
     } catch (error) {
         console.error('Error saving AI summary:', error);
@@ -1346,7 +1608,7 @@ function initializeEventListeners() {
 
     // Close modals when clicking outside
     window.addEventListener('click', (event) => {
-        const modals = ['uploadModal', 'createFlashcardModal'];
+        const modals = ['uploadModal', 'createFlashcardModal', 'joinClassModal'];
         modals.forEach(modalId => {
             const modal = document.getElementById(modalId);
             if (modal && event.target === modal) {

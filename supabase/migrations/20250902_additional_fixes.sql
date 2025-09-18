@@ -184,6 +184,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute permission
 GRANT EXECUTE ON FUNCTION rpc_ensure_my_profile() TO authenticated;
 
+-- Add resource_id column to ai_summaries table if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'ai_summaries' 
+        AND column_name = 'resource_id'
+    ) THEN
+        ALTER TABLE ai_summaries ADD COLUMN resource_id UUID REFERENCES resources(id);
+    END IF;
+END $$;
+
 -- 8. Fix any existing data issues
 -- This will create profiles for any existing authenticated users
 SELECT fix_user_data(id) FROM auth.users WHERE id NOT IN (SELECT id FROM profiles);

@@ -196,10 +196,93 @@ async function loadAssignments() {
 }
 
 // --------------------
+// Resources
+// --------------------
+async function loadResources() {
+    try {
+        const teacherId = window.appState.currentUser.id;
+        
+        // Get all classes taught by this teacher
+        const { data: classes, error: classError } = await window.supabase
+            .from('classes')
+            .select('id')
+            .eq('teacher_id', teacherId);
+        
+        if (classError) throw classError;
+        
+        if (!classes || classes.length === 0) {
+            const container = document.getElementById('resourcesGrid');
+            if (container) {
+                window.utils.showEmptyState(container, 'No classes yet', 'Create a class to see student resources');
+            }
+            return;
+        }
+        
+        const classIds = classes.map(c => c.id);
+        
+        // Get all resources from enrolled students
+        const { data: resources, error: resourceError } = await window.supabase
+            .from('resources')
+            .select(`
+                *,
+                profiles!resources_user_id_fkey(full_name),
+                subjects(name),
+                chapters(name)
+            `)
+            .eq('is_public', true)
+            .order('created_at', { ascending: false });
+        
+        if (resourceError) throw resourceError;
+        
+        displayTeacherResources(resources);
+    } catch (error) {
+        console.error('Error loading resources:', error);
+        window.utils.showNotification('Failed to load resources', 'error');
+    }
+}
+
+function displayTeacherResources(resources) {
+    const container = document.getElementById('resourcesGrid');
+    if (!container) return;
+    
+    if (resources.length === 0) {
+        window.utils.showEmptyState(container, 'No student resources', 'Students haven\'t shared any resources yet');
+        return;
+    }
+    
+    container.innerHTML = resources.map(resource => `
+        <div class="resource-card">
+            <div class="resource-header">
+                <h3>${resource.title}</h3>
+                <div class="resource-meta">
+                    <span>${resource.subjects?.name || 'General'}</span>
+                    <span class="resource-type">${resource.resource_type}</span>
+                </div>
+                <div class="resource-meta">
+                    <span>by ${resource.profiles?.full_name || 'Unknown'}</span>
+                    <span>${window.utils.formatTimeAgo(resource.created_at)}</span>
+                </div>
+            </div>
+            <div class="resource-body">
+                <div class="resource-description">
+                    ${resource.description || 'No description available'}
+                </div>
+                <div class="resource-actions">
+                    <button class="btn-secondary btn-small" onclick="viewResource('${resource.id}')">View</button>
+                    <button class="btn-primary btn-small" onclick="approveResource('${resource.id}')">Feature</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// --------------------
 // Modal Handlers
 // --------------------
 function showCreateClassModal() { document.getElementById('createClassModal').style.display = 'block'; }
 function closeCreateClassModal() { document.getElementById('createClassModal').style.display = 'none'; }
+function showCreateAssignmentModal() { document.getElementById('createAssignmentModal').style.display = 'block'; }
+function closeCreateAssignmentModal() { document.getElementById('createAssignmentModal').style.display = 'none'; }
 
 async function handleCreateClass(event) {
   event.preventDefault();
