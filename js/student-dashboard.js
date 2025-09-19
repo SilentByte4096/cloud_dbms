@@ -683,8 +683,7 @@ async function loadAssignments(status = 'pending') {
             .select(`
                 *,
                 classes(name),
-                submissions!left(id, submitted_at),
-                grades!left(points, feedback, graded_at)
+                submissions!left(id, submitted_at, grades(points, feedback, graded_at))
             `)
             .in('class_id', classIds)
             .order('due_date', { ascending: true });
@@ -698,7 +697,7 @@ async function loadAssignments(status = 'pending') {
         assignments.forEach(assignment => {
             const dueDate = new Date(assignment.due_date);
             const hasSubmission = assignment.submissions.length > 0;
-            const hasGrade = assignment.grades.length > 0;
+            const hasGrade = hasSubmission && assignment.submissions[0].grades && assignment.submissions[0].grades.length > 0;
 
             if (status === 'pending' && !hasSubmission && dueDate > now) {
                 filteredAssignments.push({ ...assignment, status: 'pending' });
@@ -741,7 +740,7 @@ function displayAssignments(assignments) {
                 ${assignment.status === 'pending' ? `
                     <button class="btn-primary btn-small" onclick="submitAssignment('${assignment.id}')">Submit</button>
                 ` : assignment.status === 'graded' ? `
-                    <span class="grade-display">Grade: ${assignment.grades[0].points}/${assignment.max_points}</span>
+                    <span class="grade-display">Grade: ${assignment.submissions[0].grades[0].points}/${assignment.max_points}</span>
                     <button class="btn-secondary btn-small" onclick="viewFeedback('${assignment.id}')">View Feedback</button>
                 ` : `
                     <span class="submitted-info">Submitted on ${window.utils.formatDate(assignment.submissions[0].submitted_at)}</span>
@@ -1561,6 +1560,56 @@ function showFeedback(gradeId, feedback) {
     // Escape HTML in feedback for safety
     const escapedFeedback = feedback.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     window.utils.showNotification(`Feedback: ${escapedFeedback}`, 'info');
+}
+
+// Resource viewing functions
+async function viewResource(resourceId) {
+    try {
+        const { data: resource, error } = await window.supabase
+            .from('resources')
+            .select('*')
+            .eq('id', resourceId)
+            .single();
+        
+        if (error) throw error;
+        
+        if (resource.file_url) {
+            // Open the resource file in a new tab
+            window.open(resource.file_url, '_blank');
+        } else {
+            window.utils.showNotification('File URL not available for this resource', 'warning');
+        }
+    } catch (error) {
+        console.error('Error viewing resource:', error);
+        window.utils.showNotification('Failed to open resource', 'error');
+    }
+}
+
+async function rateResource(resourceId) {
+    // Simple rating function - could be expanded to a modal
+    const rating = prompt('Rate this resource (1-5 stars):');
+    if (rating && rating >= 1 && rating <= 5) {
+        try {
+            const userId = window.appState.currentUser.id;
+            
+            const { error } = await window.supabase
+                .from('resource_ratings')
+                .upsert({
+                    resource_id: resourceId,
+                    user_id: userId,
+                    rating: parseInt(rating)
+                });
+            
+            if (error) throw error;
+            
+            window.utils.showNotification('Rating saved successfully!', 'success');
+            // Reload resources to show updated rating
+            await loadResources();
+        } catch (error) {
+            console.error('Error rating resource:', error);
+            window.utils.showNotification('Failed to save rating', 'error');
+        }
+    }
 }
 
 // Utility functions

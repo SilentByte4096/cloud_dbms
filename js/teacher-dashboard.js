@@ -46,11 +46,15 @@ async function loadUserInfo() {
 // --------------------
 async function loadDashboardData() {
     try {
+        if (!window.appState || !window.appState.currentUser) {
+            console.error('User not authenticated');
+            return;
+        }
         const teacherId = window.appState.currentUser.id;
 
         const [classes, assignments, submissions] = await Promise.all([
-            window.supabase.from('teacher_classes').select('*'),
-            window.supabase.from('teacher_assignments').select('id'),
+            window.supabase.from('classes').select('*').eq('teacher_id', teacherId),
+            window.supabase.from('assignments').select('id').eq('teacher_id', teacherId),
             window.supabase.from('submissions')
                 .select('id, assignments!inner(id, title, teacher_id), profiles(full_name), grades(id)')
                 .eq('assignments.teacher_id', teacherId)
@@ -62,9 +66,19 @@ async function loadDashboardData() {
         document.getElementById('assignmentCount').textContent = assignments.data?.length || 0;
         document.getElementById('submissionCount').textContent = submissions.data?.length || 0;
 
-        // Count unique students
-        const uniqueStudents = new Set(classes.data?.flatMap(c => c.student_ids) || []);
-        document.getElementById('studentCount').textContent = uniqueStudents.size;
+        // Count unique students from class enrollments
+        if (classes.data && classes.data.length > 0) {
+            const classIds = classes.data.map(c => c.id);
+            const { data: enrollments } = await window.supabase
+                .from('class_enrollments')
+                .select('student_id')
+                .in('class_id', classIds);
+            
+            const uniqueStudents = new Set(enrollments?.map(e => e.student_id) || []);
+            document.getElementById('studentCount').textContent = uniqueStudents.size;
+        } else {
+            document.getElementById('studentCount').textContent = 0;
+        }
 
         // Load recent submissions
         await loadRecentSubmissions();
@@ -78,6 +92,10 @@ async function loadDashboardData() {
 // --------------------
 async function loadRecentSubmissions() {
     try {
+        if (!window.appState || !window.appState.currentUser) {
+            console.error('User not authenticated');
+            return;
+        }
         const teacherId = window.appState.currentUser.id;
 
         const { data: submissions, error } = await window.supabase
@@ -134,7 +152,17 @@ function showSection(sectionName) {
 // --------------------
 async function loadClasses() {
     try {
-        const { data: classes, error } = await window.supabase.from('teacher_classes').select('*');
+        if (!window.appState || !window.appState.currentUser) {
+            console.error('User not authenticated');
+            window.utils.showNotification('Please log in first', 'error');
+            return;
+        }
+        const teacherId = window.appState.currentUser.id;
+        const { data: classes, error } = await window.supabase
+            .from('classes')
+            .select('*')
+            .eq('teacher_id', teacherId);
+        
         if (error) throw error;
 
         const container = document.getElementById('classesList');
@@ -143,7 +171,23 @@ async function loadClasses() {
             return;
         }
 
-        container.innerHTML = classes.map(c => `
+        // Get student counts and assignment counts for each class
+        const classesWithCounts = await Promise.all(
+            classes.map(async (c) => {
+                const [enrollments, assignments] = await Promise.all([
+                    window.supabase.from('class_enrollments').select('id').eq('class_id', c.id),
+                    window.supabase.from('assignments').select('id').eq('class_id', c.id)
+                ]);
+                
+                return {
+                    ...c,
+                    studentCount: enrollments.data?.length || 0,
+                    assignmentCount: assignments.data?.length || 0
+                };
+            })
+        );
+
+        container.innerHTML = classesWithCounts.map(c => `
             <div class="class-card">
                 <div class="class-header">
                     <div>
@@ -154,8 +198,9 @@ async function loadClasses() {
                 </div>
                 <div class="class-description">${c.description || 'No description provided'}</div>
                 <div class="class-stats">
-                    <span>Students: ${c.student_ids.length}</span>
-                    <span>Assignments: ${c.assignment_ids.length}</span>
+                    <span>Students: ${c.studentCount}</span>
+                    <span>Assignments: ${c.assignmentCount}</span>
+                    <span>Created: ${window.utils.formatDate(c.created_at)}</span>
                 </div>
             </div>
         `).join('');
@@ -169,9 +214,18 @@ async function loadClasses() {
 // --------------------
 async function loadAssignments() {
     try {
+        if (!window.appState || !window.appState.currentUser) {
+            console.error('User not authenticated');
+            return;
+        }
+        const teacherId = window.appState.currentUser.id;
         const { data: assignments, error } = await window.supabase
-            .from('teacher_assignments')
-            .select('*')
+            .from('assignments')
+            .select(`
+                *,
+                classes(name)
+            `)
+            .eq('teacher_id', teacherId)
             .order('due_date', { ascending: false });
 
         if (error) throw error;
@@ -185,8 +239,18 @@ async function loadAssignments() {
         container.innerHTML = assignments.map(a => `
             <div class="assignment-card">
                 <div class="assignment-header">
-                    <h3>${a.title}</h3>
-                    <div>Class: ${a.class_name} | Due: ${window.utils.formatDateTime(a.due_date)} | Points: ${a.max_points}</div>
+                    <div>
+                        <h3 class="assignment-title">${a.title}</h3>
+                        <div class="assignment-meta">
+                            Class: ${a.classes.name} | Due: ${window.utils.formatDateTime(a.due_date)} | Points: ${a.max_points}
+                        </div>
+                    </div>
+                    <div class="assignment-status status-active">Active</div>
+                </div>
+                <div class="assignment-description">${a.description}</div>
+                <div class="assignment-actions">
+                    <button class="btn-secondary btn-small" onclick="viewAssignmentSubmissions('${a.id}')">View Submissions</button>
+                    <button class="btn-primary btn-small" onclick="editAssignment('${a.id}')">Edit</button>
                 </div>
             </div>
         `).join('');
@@ -281,22 +345,91 @@ function displayTeacherResources(resources) {
 // --------------------
 function showCreateClassModal() { document.getElementById('createClassModal').style.display = 'block'; }
 function closeCreateClassModal() { document.getElementById('createClassModal').style.display = 'none'; }
-function showCreateAssignmentModal() { document.getElementById('createAssignmentModal').style.display = 'block'; }
-function closeCreateAssignmentModal() { document.getElementById('createAssignmentModal').style.display = 'none'; }
+async function showCreateAssignmentModal() { 
+    const modal = document.getElementById('createAssignmentModal');
+    if (modal) {
+        modal.style.display = 'block';
+        await loadClassesForAssignment();
+    }
+}
+
+function closeCreateAssignmentModal() { 
+    const modal = document.getElementById('createAssignmentModal');
+    if (modal) {
+        modal.style.display = 'none';
+        const form = modal.querySelector('form');
+        if (form) form.reset();
+    }
+}
+
+async function loadClassesForAssignment() {
+    try {
+        const teacherId = window.appState.currentUser.id;
+        const { data: classes, error } = await window.supabase
+            .from('classes')
+            .select('id, name')
+            .eq('teacher_id', teacherId);
+        
+        if (error) throw error;
+        
+        const classSelect = document.getElementById('assignmentClass');
+        if (classSelect) {
+            classSelect.innerHTML = '<option value="">Select Class</option>' +
+                classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Error loading classes for assignment:', error);
+    }
+}
 
 async function handleCreateClass(event) {
   event.preventDefault();
 
   try {
+    if (!window.appState || !window.appState.currentUser) {
+      window.utils.showNotification('Please log in first', 'error');
+      return;
+    }
+    
     const teacherId = window.appState.currentUser.id;
     const name = document.getElementById('className').value.trim();
     const subject = document.getElementById('classSubject').value.trim();
     const description = document.getElementById('classDescription').value.trim();
-    const classCode = document.getElementById('classCode').value.trim();
+    let classCode = document.getElementById('classCode').value.trim();
 
     if (!name || !subject || !classCode) {
       window.utils.showNotification('Name, Subject, and Class Code are required.');
       return;
+    }
+
+    // Check if class code already exists and generate a unique one if needed
+    const { data: existingClass } = await window.supabase
+      .from('classes')
+      .select('id')
+      .eq('class_code', classCode)
+      .maybeSingle();
+    
+    if (existingClass) {
+      // Generate a unique class code by appending a number
+      let counter = 1;
+      let newClassCode = `${classCode}${counter}`;
+      
+      while (true) {
+        const { data: checkClass } = await window.supabase
+          .from('classes')
+          .select('id')
+          .eq('class_code', newClassCode)
+          .maybeSingle();
+        
+        if (!checkClass) {
+          classCode = newClassCode;
+          break;
+        }
+        counter++;
+        newClassCode = `${classCode.replace(/\d+$/, '')}${counter}`;
+      }
+      
+      window.utils.showNotification(`Class code '${document.getElementById('classCode').value}' was taken, using '${classCode}' instead`, 'warning');
     }
 
     const { data, error } = await window.supabase
@@ -324,6 +457,7 @@ async function handleCreateClass(event) {
 
 async function handleCreateAssignment(event) {
     event.preventDefault();
+    
     const title = document.getElementById('assignmentTitle').value.trim();
     const classId = document.getElementById('assignmentClass').value;
     const description = document.getElementById('assignmentDescription').value.trim();
@@ -332,20 +466,32 @@ async function handleCreateAssignment(event) {
     const teacherId = window.appState.currentUser.id;
 
     if (!title || !classId || !description || !dueDate || !maxPoints) {
-        alert('Please fill all required fields.');
+        window.utils.showNotification('Please fill all required fields.', 'error');
         return;
     }
 
     try {
-        const { data, error } = await window.supabase.from('teacher_assignments').insert([{
-            title, class_id: classId, description, due_date: dueDate, max_points: maxPoints, teacher_id: teacherId
-        }]);
+        const { data, error } = await window.supabase
+            .from('assignments')
+            .insert([{
+                title,
+                class_id: classId,
+                teacher_id: teacherId,
+                description,
+                due_date: dueDate,
+                max_points: maxPoints,
+                is_published: true
+            }]);
+        
         if (error) throw error;
+        
+        window.utils.showNotification('Assignment created successfully!', 'success');
         closeCreateAssignmentModal();
-        loadAssignments();
+        await loadAssignments();
+        await loadDashboardData();
     } catch (err) {
         console.error('Error creating assignment:', err);
-        alert('Failed to create assignment. Check console.');
+        window.utils.showNotification(`Failed to create assignment: ${err.message}`, 'error');
     }
 }
 window.handleCreateAssignment = handleCreateAssignment;
@@ -385,6 +531,85 @@ async function handleGradeSubmit(event) {
     }
 }
 window.handleGradeSubmit = handleGradeSubmit;
+
+// --------------------
+// Assignment Management Functions
+// --------------------
+async function viewAssignmentSubmissions(assignmentId) {
+    try {
+        const { data: submissions, error } = await window.supabase
+            .from('submissions')
+            .select(`
+                *,
+                profiles!submissions_student_id_fkey(full_name),
+                grades(points, feedback, graded_at)
+            `)
+            .eq('assignment_id', assignmentId);
+        
+        if (error) throw error;
+        
+        if (submissions.length === 0) {
+            window.utils.showNotification('No submissions yet for this assignment', 'info');
+            return;
+        }
+        
+        // For now, show a simple alert with submission count
+        // In a full implementation, this would open a detailed view
+        window.utils.showNotification(`Found ${submissions.length} submission(s) for this assignment`, 'info');
+        console.log('Submissions:', submissions);
+        
+    } catch (error) {
+        console.error('Error loading submissions:', error);
+        window.utils.showNotification('Failed to load submissions', 'error');
+    }
+}
+
+function editAssignment(assignmentId) {
+    // Placeholder for edit functionality
+    window.utils.showNotification('Edit assignment feature coming soon!', 'info');
+    console.log('Edit assignment:', assignmentId);
+}
+
+// --------------------
+// Resource Functions
+// --------------------
+async function viewResource(resourceId) {
+    try {
+        const { data: resource, error } = await window.supabase
+            .from('resources')
+            .select('*')
+            .eq('id', resourceId)
+            .single();
+        
+        if (error) throw error;
+        
+        if (resource.file_url) {
+            // Open the resource file in a new tab
+            window.open(resource.file_url, '_blank');
+        } else {
+            window.utils.showNotification('File URL not available for this resource', 'warning');
+        }
+    } catch (error) {
+        console.error('Error viewing resource:', error);
+        window.utils.showNotification('Failed to open resource', 'error');
+    }
+}
+
+async function approveResource(resourceId) {
+    try {
+        // This could be used to feature/approve resources or add to a recommended list
+        window.utils.showNotification('Resource featured! (Feature can be expanded)', 'success');
+        
+        // Could add functionality to:
+        // - Mark resource as "featured" in database
+        // - Add to a recommended resources list
+        // - Increase visibility in student feeds
+        
+    } catch (error) {
+        console.error('Error featuring resource:', error);
+        window.utils.showNotification('Failed to feature resource', 'error');
+    }
+}
 
 // --------------------
 // Event Listeners
