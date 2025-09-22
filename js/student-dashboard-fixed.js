@@ -8,6 +8,14 @@ let currentCardIndex = 0;
 let currentResourceType = 'class';
 let currentClassId = null;
 let currentResourceId = null;
+let timerInterval = null;
+let timerState = {
+    isRunning: false,
+    timeLeft: 1500, // 25 minutes in seconds
+    isBreak: false,
+    workDuration: 25,
+    breakDuration: 5
+};
 
 // Flashcard assignment state
 let currentFlashcardAssignment = null;
@@ -22,13 +30,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         await checkAuth();
         await loadUserInfo();
         await loadDashboardData();
-        initializeEventListeners();
-        initializeTimer();
-        
-        console.log('✅ Student dashboard initialized successfully');
+        console.log('✅ Student dashboard data loaded');
     } catch (error) {
         console.error('❌ Failed to initialize dashboard:', error);
-        window.utils?.showNotification('Failed to initialize dashboard', 'error');
+        window.utils?.showNotification('Some data failed to load. Navigation is still available.', 'warning');
+    } finally {
+        // Always attach listeners so sidebar works even if data load failed
+        try { initializeEventListeners(); } catch (_) {}
+        try { initializeTimer(); } catch (_) {}
     }
 });
 
@@ -59,12 +68,14 @@ async function loadUserInfo() {
             .single();
 
         if (error && error.code !== 'PGRST116') throw error;
+        // Save user role for permission checks
+        window.appState.userRole = profile?.user_type || 'student';
 
         const userInfoDiv = document.getElementById('userInfo');
         if (userInfoDiv) {
             userInfoDiv.innerHTML = `
                 <h4>${profile?.full_name || user.email}</h4>
-                <p>Student</p>
+                <p>${window.appState.userRole === 'teacher' ? 'Teacher' : 'Student'}</p>
             `;
         }
     } catch (error) {
@@ -184,18 +195,10 @@ function showSection(sectionName) {
         selectedSection.classList.add('active');
     }
     
-    // Update navigation
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
+    // Update navigation (activate the item with matching data-section)
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.section === sectionName);
     });
-    
-    // Find and activate the clicked nav item
-    const activeNavItem = Array.from(document.querySelectorAll('.nav-item')).find(item => 
-        item.onclick && item.onclick.toString().includes(`'${sectionName}'`)
-    );
-    if (activeNavItem) {
-        activeNavItem.classList.add('active');
-    }
     
     currentSection = sectionName;
     
@@ -215,7 +218,8 @@ function showSection(sectionName) {
             loadFlashcardSets();
             break;
         case 'ai-assistant':
-            loadAIResources();
+            // Populate existing resources for AI
+            try { await loadAIResourceOptions(); } catch (_) {}
             break;
         case 'grades':
             loadGrades();
@@ -430,23 +434,27 @@ async function handleJoinClass(event) {
 // Resources functions
 async function loadResources() {
     try {
-        const userId = window.appState.currentUser.id;
-        let query;
-        let classIds = null;
+        let userId = window.appState?.currentUser?.id;
+        if (!userId) {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return; // not signed in yet
+            window.appState = window.appState || {};
+            window.appState.currentUser = user;
+            userId = user.id;
+        }
 
         if (currentResourceType === 'personal') {
-            // Load personal resources
-            query = window.supabase
+            // Load personal resources (safe even if class_id column doesn't exist)
+            const { data, error } = await window.supabase
                 .from('resources')
-                .select(`
-                    *,
-                    subjects(name),
-                    chapters(name),
-                    profiles(full_name)
-                `)
-                .eq('user_id', userId);
+                .select('*')
+                .eq('user_id', userId)
+                .order('id', { ascending: false });
+            if (error) throw error;
+            displayResources(data || []);
+            return;
         } else {
-            // Load class resources
+            // Load class resources via class_resources join (works even if resources.class_id is absent)
             const { data: enrollments } = await window.supabase
                 .from('class_enrollments')
                 .select('class_id')
@@ -457,52 +465,23 @@ async function loadResources() {
                 const resourcesGrid = document.getElementById('resourcesGrid');
                 if (resourcesGrid) {
                     resourcesGrid.innerHTML = `
-                        <div class="empty-state">
-                            <h3>No classes joined</h3>
-                            <p>Join a class to see class resources</p>
-                        </div>
+                        <div class=\"empty-state\">\n                            <h3>No classes joined</h3>\n                            <p>Join a class to see class resources</p>\n                        </div>
                     `;
                 }
                 return;
             }
 
             const classIds = enrollments.map(e => e.class_id);
-            // Just load all resources since class_id column doesn't exist
-            query = window.supabase
-                .from('resources')
-                .select(`
-                    *,
-                    subjects(name),
-                    chapters(name),
-                    profiles(full_name)
-                `);
-        }
-
-        let resources = [];
-        let error = null;
-        try {
-            const res = await query.order('id', { ascending: false });
-            resources = res.data || [];
-            error = res.error || null;
-        } catch (e) {
-            error = e;
-        }
-
-        if (error && (error.code === 'PGRST204' || (error.message && error.message.includes('class_id')))) {
-            // Fallback when resources.class_id is not available: use class_resources join
-            const { data: classRes, error: joinError } = await window.supabase
+            const { data, error } = await window.supabase
                 .from('class_resources')
-                .select('resources!inner(*, subjects(name), chapters(name), profiles(full_name))')
+                .select('*, resources!inner(*)')
                 .in('class_id', classIds)
                 .order('id', { ascending: false });
-            if (joinError) throw joinError;
-            displayResources((classRes || []).map(cr => cr.resources));
+            if (error) throw error;
+            const resources = (data || []).map(cr => cr.resources);
+            displayResources(resources);
             return;
         }
-
-        if (error) throw error;
-
-        displayResources(resources);
     } catch (error) {
         console.error('Error loading resources:', error);
         if (window.utils?.showNotification) {
@@ -533,11 +512,8 @@ function displayResources(resources) {
                     ${resource.is_official ? '<span class="official-badge">Official</span>' : ''}
                 </div>
                 <div class="resource-meta">
-                    <span>${resource.subjects?.name || 'General'}</span>
-                    <span class="resource-type">${resource.resource_type}</span>
+                    <span class="resource-type">${resource.resource_type || 'resource'}</span>
                 </div>
-                
-                <div class="resource-author">by ${resource.profiles?.full_name}</div>
             </div>
             <div class="resource-body">
                 <div class="resource-description">
@@ -557,11 +533,12 @@ function displayResources(resources) {
 function showResourceType(type) {
     currentResourceType = type;
     
-    // Update tab buttons
-    document.querySelectorAll('.resource-tabs .tab-btn').forEach(btn => {
-        btn.classList.remove('active');
+    // Update tab buttons without relying on event
+    const tabs = document.querySelectorAll('.resource-tabs .tab-btn');
+    tabs.forEach((btn, idx) => {
+        const isClass = (type === 'class');
+        btn.classList.toggle('active', isClass ? idx === 0 : idx === 1);
     });
-    event.target.classList.add('active');
     
     loadResources();
 }
@@ -656,8 +633,8 @@ async function handleResourceUpload(event) {
             const fileExt = file.name.split('.').pop();
             const fileName = `${userId}/${Date.now()}.${fileExt}`;
             
-            const { data: uploadData, error: uploadError } = await window.supabase.storage
-                .from('study-hub')
+const { data: uploadData, error: uploadError } = await window.supabase.storage
+                .from('resources')
                 .upload(fileName, file);
 
             if (uploadError) throw uploadError;
@@ -714,8 +691,8 @@ async function handleResourceUpload(event) {
             }
 
             // Get file URL
-            const { data: urlData } = window.supabase.storage
-                .from('study-hub')
+const { data: urlData } = window.supabase.storage
+                .from('resources')
                 .getPublicUrl(fileName);
 
             // Create resource record
@@ -738,12 +715,12 @@ async function handleResourceUpload(event) {
 
             if (resourceError) throw resourceError;
 
-            // If a class is selected, link the resource to the class via class_resources
+            // If a class is selected, create class_resources link
             if (classId) {
-                const { error: linkError } = await window.supabase
+                const { error: crError } = await window.supabase
                     .from('class_resources')
                     .insert([{ class_id: classId, resource_id: resourceData.id }]);
-                if (linkError) throw linkError;
+                if (crError) throw crError;
             }
 
             if (window.utils?.showNotification) {
@@ -775,14 +752,22 @@ async function viewResource(resourceId) {
         if (error) throw error;
 
         if (resource.file_url) {
-            // Open directly in new tab - browser will display if possible
-            const viewerWindow = window.open(resource.file_url, '_blank');
-            
-            // If popup was blocked, notify user
-            if (!viewerWindow) {
-                if (window.utils?.showNotification) {
-                    window.utils.showNotification('Please allow popups to view resources', 'warning');
-                }
+            const url = resource.file_url;
+            const name = (resource.file_name || '').toLowerCase();
+            const ext = name.split('.').pop();
+
+            let viewUrl = url;
+            if (['doc','docx','ppt','pptx','xls','xlsx'].includes(ext)) {
+                viewUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+            }
+
+            const modal = document.getElementById('resourcePreviewModal');
+            const iframe = document.getElementById('resourcePreviewFrame');
+            if (modal && iframe) {
+                iframe.src = viewUrl;
+                modal.style.display = 'block';
+            } else {
+                window.open(viewUrl, '_blank');
             }
         } else {
             if (window.utils?.showNotification) {
@@ -829,9 +814,9 @@ async function loadAssignments(status = 'pending') {
             .select(`
                 *,
                 classes(name),
-                submissions!left(id, submitted_at, grades(points, feedback, graded_at)),
+                submissions!left(id, submitted_at, student_id, grades(points, feedback, graded_at)),
                 flashcard_assignment_links!left(flashcard_set_id),
-                flashcard_attempts!left(id, score, completed_at)
+                flashcard_attempts!left(id, student_id, score, completed_at)
             `)
             .in('class_id', classIds)
             .order('due_date', { ascending: true });
@@ -844,16 +829,18 @@ async function loadAssignments(status = 'pending') {
         (assignments || []).forEach(assignment => {
             const dueDate = new Date(assignment.due_date);
             const isFlashcard = assignment.flashcard_assignment_links && assignment.flashcard_assignment_links.length > 0;
-            const hasSubmission = assignment.submissions.length > 0;
-            const hasAttempt = assignment.flashcard_attempts && assignment.flashcard_attempts.length > 0;
-            const hasGrade = hasSubmission && assignment.submissions[0].grades && assignment.submissions[0].grades.length > 0;
-            const hasFlashcardGrade = hasAttempt && assignment.flashcard_attempts[0].completed_at;
+            const mySubmission = (assignment.submissions || []).find(s => s.student_id === userId) || null;
+            const myAttempt = (assignment.flashcard_attempts || []).find(a => a.student_id === userId) || null;
+            const hasSubmission = !!mySubmission;
+            const hasAttempt = !!myAttempt;
+            const hasGrade = hasSubmission && mySubmission.grades && mySubmission.grades.length > 0;
+            const hasFlashcardGrade = hasAttempt && !!myAttempt.completed_at;
             
             // Set additional properties for UI
             assignment.isFlashcard = isFlashcard;
             if (isFlashcard && hasAttempt) {
-                assignment.flashcardScore = assignment.flashcard_attempts[0].score;
-                assignment.flashcardCompleted = assignment.flashcard_attempts[0].completed_at;
+                assignment.flashcardScore = myAttempt.score;
+                assignment.flashcardCompleted = myAttempt.completed_at;
             }
 
             if (status === 'pending' && ((isFlashcard && !hasAttempt) || (!isFlashcard && !hasSubmission)) && dueDate > now) {
@@ -928,44 +915,15 @@ function showAssignments(status) {
 }
 
 // Assignment submission functions
-async function submitAssignment(assignmentId) {
+function submitAssignment(assignmentId) {
     const modal = document.getElementById('assignmentSubmissionModal');
     if (!modal) return;
     
-    // Set assignment ID
-    const assignmentInput = document.getElementById('submissionAssignmentId');
-    if (assignmentInput) {
-        assignmentInput.value = assignmentId;
-    }
+    document.getElementById('submissionAssignmentId').value = assignmentId;
     
     // Clear previous content
-    const textInput = document.getElementById('submissionText');
-    if (textInput) textInput.value = '';
-    
-    const fileInput = document.getElementById('submissionFile');
-    if (fileInput) fileInput.value = '';
-    
-    // Load assignment details
-    try {
-        const { data: assignment, error } = await window.supabase
-            .from('assignments')
-            .select('title, description, due_date, max_points')
-            .eq('id', assignmentId)
-            .single();
-        
-        if (!error && assignment) {
-            const detailsDiv = document.getElementById('assignmentSubmissionDetails');
-            if (detailsDiv) {
-                detailsDiv.innerHTML = `
-                    <h4>${assignment.title}</h4>
-                    <p>${assignment.description}</p>
-                    <p><strong>Due:</strong> ${formatDateTime(assignment.due_date)} | <strong>Points:</strong> ${assignment.max_points}</p>
-                `;
-            }
-        }
-    } catch (error) {
-        console.error('Error loading assignment details:', error);
-    }
+    document.getElementById('submissionText').value = '';
+    document.getElementById('submissionFile').value = '';
     
     modal.style.display = 'block';
 }
@@ -1002,14 +960,14 @@ async function handleAssignmentSubmission(event) {
             const fileExt = file.name.split('.').pop();
             const uploadFileName = `${userId}/${Date.now()}.${fileExt}`;
             
-            const { data: uploadData, error: uploadError } = await window.supabase.storage
-                .from('study-hub')
+const { data: uploadData, error: uploadError } = await window.supabase.storage
+                .from('submissions')
                 .upload(uploadFileName, file);
                 
             if (uploadError) throw uploadError;
             
-            const { data: urlData } = window.supabase.storage
-                .from('study-hub')
+const { data: urlData } = window.supabase.storage
+                .from('submissions')
                 .getPublicUrl(uploadFileName);
                 
             fileUrl = urlData.publicUrl;
@@ -1458,6 +1416,12 @@ async function handleCreateFlashcardSet(event) {
     event.preventDefault();
     
     try {
+        if (window.appState?.userRole !== 'teacher') {
+            if (window.utils?.showNotification) {
+                window.utils.showNotification('Only teachers can create flashcards.', 'error');
+            }
+            return;
+        }
         const userId = window.appState.currentUser.id;
         const setName = document.getElementById('flashcardSetName').value.trim();
         const subject = document.getElementById('flashcardSubject').value.trim();
@@ -1811,16 +1775,53 @@ async function loadTimerStats() {
 async function generateAIContent(type) {
     const fileInput = document.getElementById('aiResourceFile');
     const titleInput = document.getElementById('aiResourceTitle');
+    const existingSel = document.getElementById('aiExistingResource');
     
-    if (!fileInput.files[0]) {
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Please select a file first', 'error');
+    let file = fileInput.files[0];
+    let title = titleInput.value.trim();
+
+    try {
+        const resultsDiv = document.getElementById('aiResults');
+        resultsDiv.innerHTML = `
+            <div class="ai-loading">
+                <h3>Processing...</h3>
+                <p>Generating ${type}. This may take a moment.</p>
+            </div>
+        `;
+
+        let result;
+        if (!file && existingSel && existingSel.value) {
+            // Use existing resource by ID
+            const { data: res, error } = await window.supabase
+                .from('resources')
+                .select('file_url, title, file_name')
+                .eq('id', existingSel.value)
+                .single();
+            if (error) throw error;
+            const useTitle = title || res.title || res.file_name || 'Resource';
+            result = await window.aiService.processResourceFromUrl(res.file_url, type, useTitle);
+        } else if (file) {
+            title = title || file.name;
+            result = await window.aiService.processResource(file, type, title);
+        } else {
+            if (window.utils?.showNotification) window.utils.showNotification('Pick an existing resource or upload a file.', 'error');
+            resultsDiv.innerHTML = '';
+            return;
         }
-        return;
+
+        displayAIResults(result);
+    } catch (error) {
+        console.error('AI generation error:', error);
+        const resultsDiv = document.getElementById('aiResults');
+        resultsDiv.innerHTML = `
+            <div class="ai-error">
+                <h3>Error</h3>
+                <p>${error.message}</p>
+                <p class="hint">Make sure your Gemini API key is configured in js/ai-service.js</p>
+            </div>
+        `;
     }
-    
-    const file = fileInput.files[0];
-    const title = titleInput.value.trim() || file.name;
+}
     
     try {
         // Show loading
@@ -2001,40 +2002,8 @@ async function loadGrades() {
 
 // Class homepage functions
 async function openClassHomepage(classId) {
-    currentClassId = classId;
-    
-    try {
-        const { data: classInfo, error } = await window.supabase
-            .from('classes')
-            .select(`
-                *,
-                profiles!classes_teacher_id_fkey(full_name)
-            `)
-            .eq('id', classId)
-            .single();
-
-        if (error) throw error;
-
-        document.getElementById('classHomepageTitle').textContent = classInfo.name;
-        
-        // Load overview content
-        document.getElementById('classOverviewContent').innerHTML = `
-            <div class="class-info">
-                <h4>${classInfo.name}</h4>
-                <p>${classInfo.description || 'No description available'}</p>
-                <p><strong>Teacher:</strong> ${classInfo.profiles?.full_name || 'Unknown'}</p>
-                <p><strong>Class Code:</strong> ${classInfo.class_code}</p>
-            </div>
-        `;
-        
-        document.getElementById('classHomepageModal').style.display = 'block';
-        
-        // Load class tab content
-        showClassTab('overview');
-        
-    } catch (error) {
-        console.error('Error loading class homepage:', error);
-    }
+    // Redirect to dedicated class page as requested
+    window.location.href = `class.html?class_id=${classId}`;
 }
 
 function closeClassHomepageModal() {
@@ -2044,12 +2013,8 @@ function closeClassHomepageModal() {
 
 async function showClassTab(tabName) {
     // Update tab buttons
-    document.querySelectorAll('.class-homepage-tabs .tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.textContent.toLowerCase().includes(tabName.toLowerCase())) {
-            btn.classList.add('active');
-        }
-    });
+    document.querySelectorAll('.class-homepage-tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
     
     // Hide all tabs
     document.querySelectorAll('.class-tab').forEach(tab => tab.classList.remove('active'));
@@ -2071,16 +2036,14 @@ async function showClassTab(tabName) {
 
 async function loadClassResources() {
     try {
-        // Use class_resources join to avoid class_id column issue
         const { data: classRes, error } = await window.supabase
             .from('class_resources')
-            .select('*, resources!inner(*, profiles(full_name))')
+            .select('*, resources!inner(*, profiles(full_name), resource_comments(count))')
             .eq('class_id', currentClassId)
             .order('id', { ascending: false });
 
         const container = document.getElementById('classResourcesContent');
-        const resources = classRes ? classRes.map(cr => cr.resources) : [];
-        if (resources.length === 0) {
+        if (!classRes || classRes.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <p>No resources available in this class yet</p>
@@ -2089,6 +2052,7 @@ async function loadClassResources() {
             return;
         }
 
+        const resources = classRes.map(cr => cr.resources);
         container.innerHTML = resources.map(resource => `
             <div class="class-resource-item">
                 <div class="resource-header">
@@ -2097,10 +2061,12 @@ async function loadClassResources() {
                 </div>
                 <p>${resource.description || 'No description'}</p>
                 <div class="resource-footer">
-                    <span>by ${resource.profiles?.full_name}</span>
+                    <span>by ${resource.profiles?.full_name || 'Unknown'}</span>
                     <div class="resource-actions">
                         <button class="btn-primary btn-small" onclick="viewResource('${resource.id}')">View</button>
-                        <button class="btn-secondary btn-small" onclick="showResourceComments('${resource.id}')">Comments</button>
+                        <button class="btn-secondary btn-small" onclick="showResourceComments('${resource.id}')">
+                            Comments (${Array.isArray(resource.resource_comments) ? resource.resource_comments.length : 0})
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2244,11 +2210,11 @@ async function submitComment() {
         
         const { error } = await window.supabase
             .from('resource_comments')
-            .insert({
+            .insert([{
                 resource_id: currentResourceId,
                 user_id: userId,
                 content: content
-            });
+            }]);
 
         if (error) throw error;
 
@@ -2290,6 +2256,17 @@ function formatTimeAgo(dateString) {
 }
 
 function initializeEventListeners() {
+    // Sidebar click handlers (robust)
+    const navLinks = document.querySelectorAll('.sidebar-nav .nav-item');
+    navLinks.forEach(link => {
+        const section = link.dataset.section;
+        if (!section) return;
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            showSection(section);
+        });
+    });
+
     // Modal close on outside click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
@@ -2308,440 +2285,6 @@ function logout() {
         });
     } else {
         window.location.href = 'index.html';
-    }
-}
-
-// Flashcard viewer functions
-async function openFlashcardSet(setId) {
-    try {
-        const { data: cards, error } = await window.supabase
-            .from('flashcards')
-            .select('*')
-            .eq('set_id', setId)
-            .order('order_index', { ascending: true });
-
-        if (error) throw error;
-
-        flashcards = cards || [];
-        currentFlashcardSet = setId;
-        currentCardIndex = 0;
-
-        if (flashcards.length === 0) {
-            if (window.utils?.showNotification) {
-                window.utils.showNotification('No cards in this set', 'warning');
-            }
-            return;
-        }
-
-        document.getElementById('flashcardSets').style.display = 'none';
-        document.getElementById('flashcardViewer').style.display = 'block';
-        
-        displayCurrentCard();
-    } catch (error) {
-        console.error('Error loading flashcards:', error);
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Failed to load flashcards', 'error');
-        }
-    }
-}
-
-function displayCurrentCard() {
-    if (flashcards.length === 0) return;
-    
-    const card = flashcards[currentCardIndex];
-    document.getElementById('cardQuestion').textContent = card.question;
-    document.getElementById('cardAnswer').textContent = card.answer;
-    document.getElementById('cardCounter').textContent = `${currentCardIndex + 1} / ${flashcards.length}`;
-    
-    // Reset flip state
-    const flashcard = document.querySelector('.flashcard');
-    if (flashcard) {
-        flashcard.classList.remove('flipped');
-    }
-}
-
-function flipCard() {
-    const flashcard = document.querySelector('.flashcard');
-    if (flashcard) {
-        flashcard.classList.toggle('flipped');
-    }
-}
-
-function nextCard() {
-    if (currentCardIndex < flashcards.length - 1) {
-        currentCardIndex++;
-        displayCurrentCard();
-    }
-}
-
-function previousCard() {
-    if (currentCardIndex > 0) {
-        currentCardIndex--;
-        displayCurrentCard();
-    }
-}
-
-function shuffleCards() {
-    for (let i = flashcards.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [flashcards[i], flashcards[j]] = [flashcards[j], flashcards[i]];
-    }
-    currentCardIndex = 0;
-    displayCurrentCard();
-}
-
-function closeFlashcardViewer() {
-    document.getElementById('flashcardSets').style.display = 'grid';
-    document.getElementById('flashcardViewer').style.display = 'none';
-    currentFlashcardSet = null;
-    currentCardIndex = 0;
-    flashcards = [];
-}
-
-// Study Timer functions
-let timerInterval = null;
-let timerState = {
-    isRunning: false,
-    timeLeft: 1500, // 25 minutes in seconds
-    isBreak: false,
-    workDuration: 25,
-    breakDuration: 5,
-    sessionsCompleted: 0,
-    totalStudyTime: 0
-};
-
-function initializeTimer() {
-    // Load settings
-    const workInput = document.getElementById('workDuration');
-    const breakInput = document.getElementById('breakDuration');
-    
-    if (workInput) {
-        workInput.addEventListener('change', (e) => {
-            timerState.workDuration = parseInt(e.target.value) || 25;
-            if (!timerState.isRunning && !timerState.isBreak) {
-                timerState.timeLeft = timerState.workDuration * 60;
-                updateTimerDisplay();
-            }
-        });
-    }
-    
-    if (breakInput) {
-        breakInput.addEventListener('change', (e) => {
-            timerState.breakDuration = parseInt(e.target.value) || 5;
-            if (!timerState.isRunning && timerState.isBreak) {
-                timerState.timeLeft = timerState.breakDuration * 60;
-                updateTimerDisplay();
-            }
-        });
-    }
-    
-    // Load saved stats from localStorage
-    const savedStats = localStorage.getItem('pomodoroStats');
-    if (savedStats) {
-        const stats = JSON.parse(savedStats);
-        const today = new Date().toDateString();
-        if (stats.date === today) {
-            timerState.sessionsCompleted = stats.sessionsCompleted || 0;
-            timerState.totalStudyTime = stats.totalStudyTime || 0;
-            updateTimerStats();
-        }
-    }
-    
-    updateTimerDisplay();
-}
-
-function toggleTimer() {
-    if (timerState.isRunning) {
-        pauseTimer();
-    } else {
-        startTimer();
-    }
-}
-
-function startTimer() {
-    timerState.isRunning = true;
-    const timerBtn = document.getElementById('timerBtn');
-    if (timerBtn) {
-        timerBtn.textContent = 'Pause';
-        timerBtn.classList.add('btn-warning');
-        timerBtn.classList.remove('btn-primary');
-    }
-    
-    timerInterval = setInterval(() => {
-        timerState.timeLeft--;
-        updateTimerDisplay();
-        
-        if (timerState.timeLeft <= 0) {
-            completeTimerSession();
-        }
-    }, 1000);
-}
-
-function pauseTimer() {
-    timerState.isRunning = false;
-    clearInterval(timerInterval);
-    
-    const timerBtn = document.getElementById('timerBtn');
-    if (timerBtn) {
-        timerBtn.textContent = 'Resume';
-        timerBtn.classList.remove('btn-warning');
-        timerBtn.classList.add('btn-primary');
-    }
-}
-
-function resetTimer() {
-    clearInterval(timerInterval);
-    timerState.isRunning = false;
-    timerState.isBreak = false;
-    timerState.timeLeft = timerState.workDuration * 60;
-    
-    const timerBtn = document.getElementById('timerBtn');
-    if (timerBtn) {
-        timerBtn.textContent = 'Start';
-        timerBtn.classList.remove('btn-warning');
-        timerBtn.classList.add('btn-primary');
-    }
-    
-    updateTimerDisplay();
-}
-
-function completeTimerSession() {
-    clearInterval(timerInterval);
-    timerState.isRunning = false;
-    
-    if (!timerState.isBreak) {
-        // Work session completed
-        timerState.sessionsCompleted++;
-        timerState.totalStudyTime += timerState.workDuration;
-        timerState.isBreak = true;
-        timerState.timeLeft = timerState.breakDuration * 60;
-        
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Work session complete! Time for a break.', 'success');
-        }
-        
-        // Play notification sound if available
-        try {
-            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSl+zOzXmkoFHTGO2vG2ZR4HS5bb8M16KwMwe9LwqoVDCh9BsOvytGEZBz2b4NWnVBIDRrHz0IA');
-            audio.play();
-        } catch (e) {}
-    } else {
-        // Break session completed
-        timerState.isBreak = false;
-        timerState.timeLeft = timerState.workDuration * 60;
-        
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Break complete! Ready for another session?', 'info');
-        }
-    }
-    
-    updateTimerDisplay();
-    updateTimerStats();
-    saveTimerStats();
-    
-    const timerBtn = document.getElementById('timerBtn');
-    if (timerBtn) {
-        timerBtn.textContent = 'Start';
-        timerBtn.classList.remove('btn-warning');
-        timerBtn.classList.add('btn-primary');
-    }
-}
-
-function updateTimerDisplay() {
-    const minutes = Math.floor(timerState.timeLeft / 60);
-    const seconds = timerState.timeLeft % 60;
-    
-    const timeDisplay = document.getElementById('timerTime');
-    if (timeDisplay) {
-        timeDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    
-    const labelDisplay = document.getElementById('timerLabel');
-    if (labelDisplay) {
-        labelDisplay.textContent = timerState.isBreak ? 'Break Time' : 'Work Session';
-    }
-    
-    // Update progress circle
-    const progress = document.getElementById('timerProgress');
-    if (progress) {
-        const totalTime = timerState.isBreak ? timerState.breakDuration * 60 : timerState.workDuration * 60;
-        const percentage = (timerState.timeLeft / totalTime) * 100;
-        const circumference = 2 * Math.PI * 45;
-        const offset = circumference - (percentage / 100) * circumference;
-        progress.style.strokeDasharray = circumference;
-        progress.style.strokeDashoffset = offset;
-    }
-}
-
-function updateTimerStats() {
-    const sessionsEl = document.getElementById('sessionsCompleted');
-    if (sessionsEl) {
-        sessionsEl.textContent = timerState.sessionsCompleted;
-    }
-    
-    const totalTimeEl = document.getElementById('totalStudyTime');
-    if (totalTimeEl) {
-        const hours = Math.floor(timerState.totalStudyTime / 60);
-        const minutes = timerState.totalStudyTime % 60;
-        totalTimeEl.textContent = `${hours}h ${minutes}m`;
-    }
-}
-
-function saveTimerStats() {
-    const stats = {
-        date: new Date().toDateString(),
-        sessionsCompleted: timerState.sessionsCompleted,
-        totalStudyTime: timerState.totalStudyTime
-    };
-    localStorage.setItem('pomodoroStats', JSON.stringify(stats));
-}
-
-// AI Assistant functions
-async function loadAIResources() {
-    try {
-        const userId = window.appState.currentUser.id;
-        
-        // Load all user's resources
-        const { data: resources, error } = await window.supabase
-            .from('resources')
-            .select('id, title, file_name, resource_type, description, file_url')
-            .eq('user_id', userId)
-            .order('id', { ascending: false });
-
-        const container = document.getElementById('aiResourcesList');
-        if (!container) return;
-
-        if (error || !resources || resources.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <h3>No resources available</h3>
-                    <p>Upload resources to use the AI assistant</p>
-                </div>
-            `;
-            return;
-        }
-
-        container.innerHTML = resources.map(resource => `
-            <div class="ai-resource-card">
-                <div class="ai-resource-info">
-                    <h4>${resource.title || resource.file_name}</h4>
-                    <p>${resource.description || 'No description'}</p>
-                    <span class="resource-type">${resource.resource_type || 'document'}</span>
-                </div>
-                <button class="btn-primary btn-small" onclick="analyzeResource('${resource.id}', '${(resource.title || resource.file_name).replace(/'/g, "\\'")}')">Analyze with AI</button>
-            </div>
-        `).join('');
-    } catch (error) {
-        console.error('Error loading AI resources:', error);
-    }
-}
-
-async function analyzeResource(resourceId, resourceName) {
-    try {
-        // Get resource details
-        const { data: resource, error } = await window.supabase
-            .from('resources')
-            .select('file_url')
-            .eq('id', resourceId)
-            .single();
-
-        if (error) throw error;
-
-        // Show results section
-        document.getElementById('aiResourcesList').parentElement.style.display = 'none';
-        const resultsDiv = document.getElementById('aiResults');
-        resultsDiv.style.display = 'block';
-        
-        document.getElementById('selectedResourceName').textContent = resourceName;
-        
-        // Simulate AI analysis (in real app, you'd call an AI service)
-        const summaryDiv = document.getElementById('documentSummary');
-        const planDiv = document.getElementById('studyPlan');
-        const flashcardsDiv = document.getElementById('suggestedFlashcards');
-        
-        summaryDiv.innerHTML = '<p>Analyzing document...</p>';
-        planDiv.innerHTML = '<p>Creating study plan...</p>';
-        flashcardsDiv.innerHTML = '<p>Generating flashcards...</p>';
-        
-        // Simulate delay
-        setTimeout(() => {
-            summaryDiv.innerHTML = `
-                <p>This document covers key concepts in the selected subject area. Main topics include:</p>
-                <ul>
-                    <li>Introduction and foundational concepts</li>
-                    <li>Core principles and methodologies</li>
-                    <li>Practical applications and examples</li>
-                    <li>Advanced topics and best practices</li>
-                </ul>
-            `;
-            
-            planDiv.innerHTML = `
-                <ol>
-                    <li><strong>Week 1:</strong> Review foundational concepts (2 hours/day)</li>
-                    <li><strong>Week 2:</strong> Practice with examples and exercises (1.5 hours/day)</li>
-                    <li><strong>Week 3:</strong> Deep dive into advanced topics (2 hours/day)</li>
-                    <li><strong>Week 4:</strong> Review and self-assessment (1 hour/day)</li>
-                </ol>
-            `;
-            
-            flashcardsDiv.innerHTML = `
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> What is the main concept discussed in chapter 1?<br>
-                    <strong>A:</strong> The foundational principles and their applications.
-                </div>
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> List three key methodologies mentioned.<br>
-                    <strong>A:</strong> 1) Systematic approach, 2) Iterative process, 3) Continuous improvement.
-                </div>
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> What are the practical applications?<br>
-                    <strong>A:</strong> Real-world implementation in various scenarios and contexts.
-                </div>
-            `;
-        }, 2000);
-        
-    } catch (error) {
-        console.error('Error analyzing resource:', error);
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Failed to analyze resource', 'error');
-        }
-    }
-}
-
-function closeAIResults() {
-    document.getElementById('aiResults').style.display = 'none';
-    document.getElementById('aiResourcesList').parentElement.style.display = 'block';
-}
-
-function createFlashcardsFromAI() {
-    // This would create flashcards from AI suggestions
-    if (window.utils?.showNotification) {
-        window.utils.showNotification('Flashcard creation from AI is coming soon!', 'info');
-    }
-}
-
-// Delete resource function
-async function deleteResource(resourceId) {
-    if (!confirm('Are you sure you want to delete this resource?')) return;
-    
-    try {
-        const { error } = await window.supabase
-            .from('resources')
-            .delete()
-            .eq('id', resourceId)
-            .eq('user_id', window.appState.currentUser.id);
-
-        if (error) throw error;
-
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Resource deleted successfully', 'success');
-        }
-        await loadResources();
-    } catch (error) {
-        console.error('Error deleting resource:', error);
-        if (window.utils?.showNotification) {
-            window.utils.showNotification('Failed to delete resource', 'error');
-        }
     }
 }
 
@@ -2766,29 +2309,6 @@ window.shuffleCards = shuffleCards;
 window.closeFlashcardViewer = closeFlashcardViewer;
 window.toggleTimer = toggleTimer;
 window.resetTimer = resetTimer;
-window.openClassHomepage = openClassHomepage;
-window.closeClassHomepageModal = closeClassHomepageModal;
-window.showClassTab = showClassTab;
-window.viewResource = viewResource;
-window.deleteResource = deleteResource;
-window.showResourceComments = showResourceComments;
-window.closeResourceCommentsModal = closeResourceCommentsModal;
-window.submitComment = submitComment;
-window.logout = logout;
-window.showAssignments = showAssignments;
-window.submitAssignment = submitAssignment;
-window.closeAssignmentSubmissionModal = closeAssignmentSubmissionModal;
-window.handleAssignmentSubmission = handleAssignmentSubmission;
-window.viewFeedback = viewFeedback;
-window.closeFeedbackModal = closeFeedbackModal;
-window.startFlashcardAssignment = startFlashcardAssignment;
-window.filterResources = filterResources;
-window.showResourceType = showResourceType;
-window.loadClasses = loadClasses;
-window.analyzeResource = analyzeResource;
-window.closeAIResults = closeAIResults;
-window.createFlashcardsFromAI = createFlashcardsFromAI;
-window.loadAIResources = loadAIResources;
 window.submitAssignment = submitAssignment;
 window.closeAssignmentSubmissionModal = closeAssignmentSubmissionModal;
 window.handleAssignmentSubmission = handleAssignmentSubmission;
@@ -2814,3 +2334,38 @@ window.filterResources = filterResources;
 window.logout = logout;
 
 console.log('✅ Student dashboard script loaded successfully');
+
+async function loadAIResourceOptions() {
+    const sel = document.getElementById('aiExistingResource');
+    if (!sel) return;
+    const userId = window.appState.currentUser.id;
+    // Personal resources
+    const personal = await window.supabase
+        .from('resources')
+        .select('id, title, file_name')
+        .eq('user_id', userId)
+        .order('id', { ascending: false });
+    // Class resources via class_resources
+    const classes = await window.supabase
+        .from('class_enrollments')
+        .select('class_id')
+        .eq('student_id', userId)
+        .eq('is_active', true);
+    let classRes = { data: [] };
+    if (!classes.error && classes.data && classes.data.length) {
+        const classIds = classes.data.map(e => e.class_id);
+        classRes = await window.supabase
+            .from('class_resources')
+            .select('resources!inner(id, title, file_name)')
+            .in('class_id', classIds)
+            .order('id', { ascending: false });
+    }
+    const options = [];
+    if (!personal.error && personal.data) {
+        personal.data.forEach(r => options.push({ id: r.id, label: `${r.title || r.file_name || r.id} (Personal)` }));
+    }
+    if (!classRes.error && classRes.data) {
+        classRes.data.forEach(cr => options.push({ id: cr.resources.id, label: `${cr.resources.title || cr.resources.file_name || cr.resources.id} (Class)` }));
+    }
+    sel.innerHTML = '<option value="">-- Select a resource --</option>' + options.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
+}

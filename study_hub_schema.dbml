@@ -1,0 +1,248 @@
+// Study Hub Educational Platform Database Schema
+
+Table profiles {
+  id UUID [pk]
+  email TEXT [unique, not null]
+  full_name TEXT [not null]
+  user_type TEXT [not null, note: 'student, teacher, or admin']
+  avatar_url TEXT
+  bio TEXT
+  created_at TIMESTAMPTZ [default: `NOW()`]
+  updated_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table subjects {
+  id UUID [pk]
+  name TEXT [unique, not null]
+  description TEXT
+  icon TEXT
+  color TEXT
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table chapters {
+  id UUID [pk]
+  subject_id UUID [not null]
+  name TEXT [not null]
+  description TEXT
+  order_index INTEGER [not null, default: 0]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table classes {
+  id UUID [pk]
+  teacher_id UUID [not null]
+  name TEXT [not null]
+  description TEXT
+  subject_id UUID
+  class_code TEXT [unique, not null]
+  is_active BOOLEAN [default: true]
+  max_students INTEGER [default: 30]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table class_enrollments {
+  id UUID [pk]
+  class_id UUID [not null]
+  student_id UUID [not null]
+  enrolled_at TIMESTAMPTZ [default: `NOW()`]
+  is_active BOOLEAN [default: true]
+  
+  indexes {
+    (class_id, student_id) [unique]
+  }
+}
+
+Table resources {
+  id UUID [pk]
+  user_id UUID [not null]
+  title TEXT [not null]
+  description TEXT
+  resource_type TEXT [not null]
+  subject_id UUID
+  chapter_id UUID
+  file_url TEXT [not null]
+  file_name TEXT [not null]
+  file_size BIGINT
+  is_official BOOLEAN [default: false]
+  is_public BOOLEAN [default: true]
+  views_count INTEGER [default: 0]
+  downloads_count INTEGER [default: 0]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table class_resources {
+  id UUID [pk]
+  class_id UUID [not null]
+  resource_id UUID [not null]
+  added_by UUID [not null]
+  added_at TIMESTAMPTZ [default: `NOW()`]
+  
+  indexes {
+    (class_id, resource_id) [unique]
+  }
+}
+
+Table resource_comments {
+  id UUID [pk]
+  resource_id UUID [not null]
+  user_id UUID [not null]
+  parent_comment_id UUID
+  content TEXT [not null]
+  is_edited BOOLEAN [default: false]
+  upvotes INTEGER [default: 0]
+  downvotes INTEGER [default: 0]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table assignments {
+  id UUID [pk]
+  class_id UUID [not null]
+  teacher_id UUID [not null]
+  title TEXT [not null]
+  description TEXT
+  assignment_type TEXT [not null]
+  max_points INTEGER [not null, default: 100]
+  due_date TIMESTAMPTZ [not null]
+  is_published BOOLEAN [default: true]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table submissions {
+  id UUID [pk]
+  assignment_id UUID [not null]
+  student_id UUID [not null]
+  content TEXT
+  file_url TEXT
+  file_name TEXT
+  submitted_at TIMESTAMPTZ [default: `NOW()`]
+  updated_at TIMESTAMPTZ [default: `NOW()`]
+  is_late BOOLEAN [default: false]
+  
+  indexes {
+    (assignment_id, student_id) [unique]
+  }
+}
+
+Table grades {
+  id UUID [pk]
+  submission_id UUID [unique, not null]
+  teacher_id UUID [not null]
+  points DECIMAL [not null]
+  max_points DECIMAL [not null]
+  percentage DECIMAL
+  feedback TEXT
+  graded_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table flashcard_sets {
+  id UUID [pk]
+  user_id UUID [not null]
+  name TEXT [not null]
+  description TEXT
+  subject TEXT
+  is_public BOOLEAN [default: false]
+  card_count INTEGER [default: 0]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table flashcards {
+  id UUID [pk]
+  set_id UUID [not null]
+  question TEXT [not null]
+  answer TEXT [not null]
+  hint TEXT
+  order_index INTEGER [not null, default: 0]
+  difficulty TEXT
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table flashcard_assignment_links {
+  id UUID [pk]
+  assignment_id UUID [not null]
+  flashcard_set_id UUID [not null]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+  
+  indexes {
+    (assignment_id, flashcard_set_id) [unique]
+  }
+}
+
+Table flashcard_attempts {
+  id UUID [pk]
+  assignment_id UUID [not null]
+  student_id UUID [not null]
+  flashcard_set_id UUID [not null]
+  score DECIMAL
+  total_cards INTEGER
+  correct_answers INTEGER
+  time_spent_seconds INTEGER
+  started_at TIMESTAMPTZ [default: `NOW()`]
+  completed_at TIMESTAMPTZ
+  
+  indexes {
+    (assignment_id, student_id) [unique]
+  }
+}
+
+Table study_sessions {
+  id UUID [pk]
+  user_id UUID [not null]
+  subject_id UUID
+  resource_id UUID
+  flashcard_set_id UUID
+  session_type TEXT [not null]
+  duration_minutes INTEGER [not null]
+  notes TEXT
+  started_at TIMESTAMPTZ [not null]
+  ended_at TIMESTAMPTZ
+  completed BOOLEAN [default: false]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+Table notifications {
+  id UUID [pk]
+  user_id UUID [not null]
+  title TEXT [not null]
+  message TEXT [not null]
+  type TEXT [not null]
+  related_id UUID
+  related_type TEXT
+  is_read BOOLEAN [default: false]
+  created_at TIMESTAMPTZ [default: `NOW()`]
+}
+
+// Relationships
+
+Ref: chapters.subject_id > subjects.id
+Ref: classes.teacher_id > profiles.id
+Ref: classes.subject_id > subjects.id
+Ref: class_enrollments.class_id > classes.id
+Ref: class_enrollments.student_id > profiles.id
+Ref: resources.user_id > profiles.id
+Ref: resources.subject_id > subjects.id
+Ref: resources.chapter_id > chapters.id
+Ref: class_resources.class_id > classes.id
+Ref: class_resources.resource_id > resources.id
+Ref: class_resources.added_by > profiles.id
+Ref: resource_comments.resource_id > resources.id
+Ref: resource_comments.user_id > profiles.id
+Ref: resource_comments.parent_comment_id > resource_comments.id
+Ref: assignments.class_id > classes.id
+Ref: assignments.teacher_id > profiles.id
+Ref: submissions.assignment_id > assignments.id
+Ref: submissions.student_id > profiles.id
+Ref: grades.submission_id - submissions.id
+Ref: grades.teacher_id > profiles.id
+Ref: flashcard_sets.user_id > profiles.id
+Ref: flashcards.set_id > flashcard_sets.id
+Ref: flashcard_assignment_links.assignment_id > assignments.id
+Ref: flashcard_assignment_links.flashcard_set_id > flashcard_sets.id
+Ref: flashcard_attempts.assignment_id > assignments.id
+Ref: flashcard_attempts.student_id > profiles.id
+Ref: flashcard_attempts.flashcard_set_id > flashcard_sets.id
+Ref: study_sessions.user_id > profiles.id
+Ref: study_sessions.subject_id > subjects.id
+Ref: study_sessions.resource_id > resources.id
+Ref: study_sessions.flashcard_set_id > flashcard_sets.id
+Ref: notifications.user_id > profiles.id

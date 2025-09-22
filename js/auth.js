@@ -37,15 +37,29 @@ async function handleLogin(event) {
         
         if (error) throw error
         
-        // Get user profile to determine role
-        const { data: profile } = await window.supabase
+        // Ensure profile exists; create if missing
+        let { data: profile, error: profileErr } = await window.supabase
             .from('profiles')
-            .select('role')
+            .select('*')
             .eq('id', data.user.id)
-            .single()
+            .maybeSingle()
+        
+        if (!profile) {
+            const userRole = data.user.user_metadata?.role || 'student'
+            const fullName = data.user.user_metadata?.full_name || data.user.email
+            const { error: upErr } = await window.supabase.from('profiles').insert([{
+                id: data.user.id,
+                full_name: fullName,
+                email: data.user.email,
+                user_type: userRole,
+                created_at: new Date().toISOString()
+            }])
+            if (upErr) throw upErr
+            profile = { user_type: userRole }
+        }
         
         // Redirect based on role
-        if (profile?.role === 'teacher') {
+        if (profile?.user_type === 'teacher') {
             window.location.href = 'dashboard-teacher.html'
         } else {
             window.location.href = 'dashboard-student.html'
@@ -80,22 +94,9 @@ async function handleSignup(event) {
         
         if (error) throw error
         
-        // Create profile record
-        const { error: profileError } = await window.supabase
-            .from('profiles')
-            .insert([
-                {
-                    id: data.user.id,
-                    full_name: name,
-                    email: email,
-                    role: role,
-                    created_at: new Date().toISOString()
-                }
-            ])
-        
-        if (profileError) throw profileError
-        
-        window.utils.showNotification('Account created successfully! Please check your email to verify your account.', 'success')
+        // Do NOT insert profile here (email confirmation may be required)
+        // Profile will be created on first login (see handleLogin)
+        window.utils.showNotification('Account created! Please check your email to verify, then log in.', 'success')
         closeAuth()
         
     } catch (error) {
@@ -131,7 +132,7 @@ async function checkAuth() {
             .single()
         
         window.appState.currentUser = user
-        window.appState.userRole = profile?.role
+        window.appState.userRole = profile?.user_type
         
         return { user, profile }
     } catch (error) {

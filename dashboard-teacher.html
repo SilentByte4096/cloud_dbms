@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teacher Dashboard - StudyHub</title>
     <link rel="stylesheet" href="styles/main.css">
-    <link rel="stylesheet" href="styles/dashboard.css">
+<link rel="stylesheet" href="styles/dashboard.css">
+    <link rel="stylesheet" href="styles/modern-theme.css">
 </head>
 <body>
     <div class="dashboard-container">
@@ -22,7 +23,7 @@
                 <a href="#" class="nav-item" data-section="assignments" onclick="showSection('assignments')">📝 Assignments</a>
                 <a href="#" class="nav-item" data-section="submissions" onclick="showSection('submissions')">📤 Submissions</a>
                 <a href="#" class="nav-item" data-section="resources" onclick="showSection('resources')">📖 Resources</a>
-                <a href="#" class="nav-item" data-section="grades" onclick="showSection('grades')">📊 Grades</a>
+                <a href="#" class="nav-item" data-section="flashcards" onclick="showSection('flashcards')">🃏 Flashcards</a>
             </nav>
             <div class="sidebar-footer">
                 <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
@@ -108,6 +109,7 @@
             <section id="resources" class="content-section">
                 <header class="section-header">
                     <h1>Class Resources</h1>
+                    <button class="btn-primary" onclick="showUploadResourceModal()">Upload Resource</button>
                 </header>
 
                 <div id="resourcesGrid" class="resources-grid">
@@ -115,27 +117,43 @@
                 </div>
             </section>
 
-            <!-- Grades Section -->
-            <section id="grades" class="content-section">
+            <!-- Flashcards Section -->
+            <section id="flashcards" class="content-section">
                 <header class="section-header">
-                    <h1>Grade Management</h1>
+                    <h1>Flashcard Sets</h1>
+                    <button class="btn-primary" onclick="showCreateFlashcardModal()">Create Flashcard Set</button>
                 </header>
 
-                <div class="grade-filters">
-                    <label for="classFilterGrades" class="visually-hidden">Filter by Class</label>
-                    <select id="classFilterGrades" onchange="filterGrades()" title="Filter by class">
-                        <option value="">All Classes</option>
-                    </select>
-                    <label for="assignmentFilterGrades" class="visually-hidden">Filter by Assignment</label>
-                    <select id="assignmentFilterGrades" onchange="filterGrades()" title="Filter by assignment">
-                        <option value="">All Assignments</option>
-                    </select>
-                </div>
-
-                <div id="gradesTable" class="grades-table">
-                    <!-- Grades table will be loaded here -->
+                <div id="flashcardSets" class="flashcard-sets">
+                    <!-- Flashcard sets will be loaded here -->
                 </div>
             </section>
+
+            <!-- Flashcard Viewer Modal -->
+            <div id="flashcardViewerModal" class="modal" style="display:none">
+                <div class="modal-content" style="max-width: 800px;">
+                    <span class="close" onclick="closeTeacherFlashcardViewer()">&times;</span>
+                    <div class="flashcard-controls" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <button class="btn-secondary btn-small" onclick="closeTeacherFlashcardViewer()">Back</button>
+                        <span id="teacherCardCounter">1 / 1</span>
+                        <div>
+                            <button class="btn-secondary btn-small" onclick="teacherPrevCard()">Prev</button>
+                            <button class="btn-primary btn-small" onclick="teacherNextCard()">Next</button>
+                        </div>
+                    </div>
+                    <div class="flashcard" onclick="teacherFlipCard()">
+                        <div class="flashcard-inner">
+                            <div class="flashcard-front">
+                                <div id="teacherCardQuestion">Question</div>
+                            </div>
+                            <div class="flashcard-back">
+                                <div id="teacherCardAnswer">Answer</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
@@ -186,6 +204,20 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="assignmentType">Assignment Type</label>
+                    <select id="assignmentType" title="Select type" onchange="toggleFlashcardSelector()" required>
+                        <option value="">Select Type</option>
+                        <option value="standard">Standard Assignment</option>
+                        <option value="flashcard">Flashcard Assignment</option>
+                    </select>
+                </div>
+                <div class="form-group" id="flashcardSetGroup" style="display: none;">
+                    <label for="assignmentFlashcardSet">Flashcard Set</label>
+                    <select id="assignmentFlashcardSet" title="Select flashcard set">
+                        <option value="">Select Flashcard Set</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label for="assignmentDescription">Description</label>
                     <textarea id="assignmentDescription" rows="4" placeholder="Enter assignment details" required></textarea>
                 </div>
@@ -216,7 +248,7 @@
             <form id="gradeForm" onsubmit="handleGradeSubmit(event)">
                 <div class="form-group">
                     <label id="gradeLabel" for="submissionGrade">Grade (out of <span id="maxPointsDisplay">100</span>)</label>
-                    <input type="number" id="submissionGrade" placeholder="Enter grade" min="0" required>
+                    <input type="number" id="submissionGrade" placeholder="Enter grade" min="0" step="0.01" required>
                 </div>
                 <div class="form-group">
                     <label for="submissionFeedback">Feedback</label>
@@ -230,10 +262,109 @@
         </div>
     </div>
 
+    <!-- Class Roster Modal -->
+    <div id="rosterModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="rosterModalTitle">
+        <div class="modal-content">
+            <span class="close" onclick="closeRosterModal()">&times;</span>
+            <h2 id="rosterModalTitle">Class Roster</h2>
+            <div id="rosterList" class="grades-table"></div>
+        </div>
+    </div>
+
+    <!-- Create Flashcard Set Modal -->
+    <div id="createFlashcardModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeCreateFlashcardModal()">&times;</span>
+            <h2>Create Flashcard Set</h2>
+            <form onsubmit="handleCreateFlashcardSet(event)">
+                <div class="form-group">
+                    <label>Set Name</label>
+                    <input type="text" id="flashcardSetName" required>
+                </div>
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" id="flashcardSubject" required>
+                </div>
+                <div class="flashcard-inputs" id="flashcardInputs">
+                    <div class="flashcard-input-pair">
+                        <div class="form-group">
+                            <label>Question 1</label>
+                            <textarea class="flashcard-question" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Answer 1</label>
+                            <textarea class="flashcard-answer" required></textarea>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary btn-small" onclick="addFlashcardInput()">Add Another Card</button>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCreateFlashcardModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Set</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Resource Modal -->
+    <div id="uploadResourceModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeUploadResourceModal()">&times;</span>
+            <h2>Upload Class Resource</h2>
+            <form onsubmit="handleResourceUpload(event)">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="resourceTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Class</label>
+                    <select id="resourceClass" required>
+                        <option value="">Select Class</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" id="resourceSubject">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="resourceType" required>
+                        <option value="">Select type</option>
+                        <option value="notes">Notes</option>
+                        <option value="code">Code</option>
+                        <option value="video">Video</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="resourceDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>File</label>
+                    <input type="file" id="resourceFile" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeUploadResourceModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
+    <!-- Resource Preview Modal -->
+    <div id="resourcePreviewModal" class="modal" style="display:none">
+        <div class="modal-content" style="max-width:1000px; height:80vh;">
+            <span class="close" onclick="document.getElementById('resourcePreviewModal').style.display='none'">&times;</span>
+            <iframe id="resourcePreviewFrame" src="" style="width:100%; height:100%; border:0;"></iframe>
+        </div>
+    </div>
+
     <script src="js/teacher-dashboard.js"></script>
 </body>
 </html>

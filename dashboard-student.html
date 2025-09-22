@@ -20,6 +20,9 @@
                 <a href="#" class="nav-item active" onclick="showSection('overview')">
                     🏠 Overview
                 </a>
+                <a href="#" class="nav-item" onclick="showSection('classes')">
+                    🏫 My Classes
+                </a>
                 <a href="#" class="nav-item" onclick="showSection('resources')">
                     📖 Resources
                 </a>
@@ -79,12 +82,28 @@
                 </div>
             </section>
 
+            <!-- Classes Section -->
+            <section id="classes" class="content-section">
+                <header class="section-header">
+                    <h1>My Classes</h1>
+                    <button class="btn-primary" onclick="showJoinClassModal()">Join Class</button>
+                </header>
+                <div id="classesGrid" class="classes-grid">
+                    <!-- Classes will be loaded here -->
+                </div>
+            </section>
+
             <!-- Resources Section -->
             <section id="resources" class="content-section">
                 <header class="section-header">
                     <h1>Study Resources</h1>
                     <button class="btn-primary" onclick="showUploadModal()">Upload Resource</button>
                 </header>
+
+                <div class="resource-tabs">
+                    <button class="tab-btn active" onclick="showResourceType('class')">Class Resources</button>
+                    <button class="tab-btn" onclick="showResourceType('personal')">Personal Resources</button>
+                </div>
 
                 <div class="filters">
                     <select id="subjectFilter" onchange="filterResources()">
@@ -260,13 +279,13 @@
                         <div class="grade-value" id="overallGPA">-</div>
                     </div>
                     <div class="grade-card">
-                        <h3>Assignments Graded</h3>
-                        <div class="grade-value" id="gradedCount">0</div>
+                        <h3>GPA</h3>
+                        <div class="grade-value" id="gpaValue">-</div>
                     </div>
                 </div>
 
-                <div id="gradesList" class="grades-list">
-                    <!-- Grades will be loaded here -->
+                <div id="gradesPerClass" class="grades-list">
+                    <!-- Grades per class will be loaded here -->
                 </div>
             </section>
         </main>
@@ -378,13 +397,14 @@
                 <!-- Assignment details will be loaded here -->
             </div>
             <form onsubmit="handleAssignmentSubmission(event)">
+                <input type="hidden" id="submissionAssignmentId" />
                 <div class="form-group">
-                    <label for="submissionNotes">Submission Notes (Optional)</label>
-                    <textarea id="submissionNotes" placeholder="Add any notes about your submission..." rows="3"></textarea>
+                    <label for="submissionText">Submission Text</label>
+                    <textarea id="submissionText" placeholder="Enter your submission text or upload a file..." rows="5"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="submissionFile">Upload File</label>
-                    <input type="file" id="submissionFile" required>
+                    <label for="submissionFile">Upload File (Optional)</label>
+                    <input type="file" id="submissionFile">
                     <small class="form-help">Accepted formats: PDF, DOC, DOCX, TXT, ZIP (Max: 10MB)</small>
                 </div>
                 <div class="form-actions">
@@ -405,6 +425,60 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="btn-primary" onclick="closeFeedbackModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Class Homepage Modal -->
+    <div id="classHomepageModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="close" onclick="closeClassHomepageModal()">&times;</span>
+            <h2 id="classHomepageTitle">Class Details</h2>
+            
+            <div class="class-homepage-tabs">
+                <button class="tab-btn active" onclick="showClassTab('overview')">Overview</button>
+                <button class="tab-btn" onclick="showClassTab('resources')">Resources</button>
+                <button class="tab-btn" onclick="showClassTab('assignments')">Assignments</button>
+                <button class="tab-btn" onclick="showClassTab('students')">Students</button>
+            </div>
+
+            <div id="classOverviewTab" class="class-tab active">
+                <div id="classOverviewContent">
+                    <!-- Class overview will be loaded here -->
+                </div>
+            </div>
+
+            <div id="classResourcesTab" class="class-tab">
+                <div id="classResourcesContent">
+                    <!-- Class resources will be loaded here -->
+                </div>
+            </div>
+
+            <div id="classAssignmentsTab" class="class-tab">
+                <div id="classAssignmentsContent">
+                    <!-- Class assignments will be loaded here -->
+                </div>
+            </div>
+
+            <div id="classStudentsTab" class="class-tab">
+                <div id="classStudentsContent">
+                    <!-- Class students will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resource Comments Modal -->
+    <div id="resourceCommentsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeResourceCommentsModal()">&times;</span>
+            <h2>Resource Comments</h2>
+            <div id="resourceCommentsContent" class="comments-list">
+                <!-- Comments will be loaded here -->
+            </div>
+            <div class="comment-form">
+                <textarea id="newCommentText" placeholder="Add your comment..." rows="3"></textarea>
+                <button class="btn-primary btn-small" onclick="submitComment()">Post Comment</button>
             </div>
         </div>
     </div>

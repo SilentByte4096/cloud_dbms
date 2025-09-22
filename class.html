@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Class | StudyHub</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/dashboard.css">
+  <link rel="stylesheet" href="styles/modern-theme.css">
+  <style>
+    .class-header-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .class-title { font-size:1.5rem; font-weight:700; color:#111; }
+    .class-subtitle { color:#666; }
+    .tabs { display:flex; gap:8px; border-bottom:1px solid var(--gray-200); margin-bottom:16px; }
+    .tab { padding:10px 14px; border:none; background:none; cursor:pointer; color:var(--gray-600); border-bottom:2px solid transparent; font-weight:600; }
+    .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .section { display:none; }
+    .section.active { display:block; }
+    .upload-inline { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin-bottom:16px; }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>📚 StudyHub</h2>
+        <div class="user-info" id="userInfo">Loading...</div>
+      </div>
+      <nav class="sidebar-nav">
+<a class="nav-item" id="backToDashboardLink" href="#">← Back to Dashboard</a>
+        <a class="nav-item active" href="#" onclick="setTab('overview')">Overview</a>
+        <a class="nav-item" href="#" onclick="setTab('resources')">Resources</a>
+        <a class="nav-item" href="#" onclick="setTab('assignments')">Assignments</a>
+        <a class="nav-item" href="#" onclick="setTab('students')">Students</a>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-secondary btn-small" onclick="logout()">Logout</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <div class="class-header-bar">
+        <div>
+          <div class="class-title" id="className">Class</div>
+          <div class="class-subtitle" id="classMeta"></div>
+        </div>
+        <div>
+          <span id="roleBadge" class="resource-type" style="display:none"></span>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" id="tab-overview" onclick="setTab('overview')">Overview</button>
+        <button class="tab" id="tab-resources" onclick="setTab('resources')">Resources</button>
+        <button class="tab" id="tab-assignments" onclick="setTab('assignments')">Assignments</button>
+        <button class="tab" id="tab-students" onclick="setTab('students')">Students</button>
+      </div>
+
+      <section id="section-overview" class="section active">
+        <div id="overviewContent" class="card"></div>
+      </section>
+
+      <section id="section-resources" class="section">
+        <div id="resourceUpload" class="upload-inline" style="display:none">
+          <form onsubmit="uploadClassResource(event)">
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="resTitle" required>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="resDesc" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Type</label>
+              <select id="resType" required>
+                <option value="">Select</option>
+                <option value="notes">Notes</option>
+                <option value="code">Code</option>
+                <option value="video">Video</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>File</label>
+              <input type="file" id="resFile" required />
+            </div>
+            <div class="form-actions">
+              <button class="btn-secondary" type="button" onclick="document.getElementById('resTitle').value=''; document.getElementById('resDesc').value=''; document.getElementById('resFile').value='';">Reset</button>
+              <button class="btn-primary" type="submit">Upload</button>
+            </div>
+          </form>
+        </div>
+        <div id="classResources" class="resources-grid"></div>
+      </section>
+
+      <section id="section-assignments" class="section">
+        <div id="classAssignments"></div>
+      </section>
+
+      <section id="section-students" class="section">
+        <div id="classStudents"></div>
+      </section>
+</main>
+  </div>
+
+  <!-- Resource Preview Modal -->
+  <div id="resourcePreviewModal" class="modal" style="display:none">
+    <div class="modal-content" style="max-width:1000px; height:80vh;">
+      <span class="close" onclick="document.getElementById('resourcePreviewModal').style.display='none'">&times;</span>
+      <iframe id="resourcePreviewFrame" src="" style="width:100%; height:100%; border:0;"></iframe>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/class-page.js"></script>
+</body>
+</html>
