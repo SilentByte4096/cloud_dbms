@@ -25,9 +25,33 @@ class AIService {
 
     async ensurePDFJS() {
         if (window.pdfjsLib) return;
-        await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.js');
-        if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.js';
+        
+        try {
+            // Try multiple CDN sources for reliability
+            const sources = [
+                'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+                'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+            ];
+            
+            for (const src of sources) {
+                try {
+                    await this.loadScript(src);
+                    if (window.pdfjsLib) {
+                        // Set worker source with same base URL
+                        const baseUrl = src.substring(0, src.lastIndexOf('/'));
+                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${baseUrl}/pdf.worker.min.js`;
+                        return;
+                    }
+                } catch (error) {
+                    console.warn(`Failed to load PDF.js from ${src}:`, error);
+                    continue;
+                }
+            }
+            
+            throw new Error('All PDF.js CDN sources failed to load');
+        } catch (error) {
+            console.warn('PDF.js not available, PDF processing will be skipped:', error);
         }
     }
 
@@ -56,19 +80,27 @@ class AIService {
             });
         }
 
-        // PDF: use pdf.js to extract text
+        // PDF: use pdf.js to extract text (with fallback)
         if (file.type === 'application/pdf' || ext === 'pdf') {
-            await this.ensurePDFJS();
-            const buffer = await file.arrayBuffer();
-            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-            let fullText = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                const strings = content.items.map(it => it.str);
-                fullText += strings.join(' ') + '\n\n';
+            try {
+                await this.ensurePDFJS();
+                if (!window.pdfjsLib) {
+                    throw new Error('PDF.js not available');
+                }
+                const buffer = await file.arrayBuffer();
+                const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    const strings = content.items.map(it => it.str);
+                    fullText += strings.join(' ') + '\n\n';
+                }
+                return fullText.trim();
+            } catch (error) {
+                console.warn('PDF processing failed, using fallback:', error);
+                return `PDF File: ${file.name} (${this.formatFileSize(file.size)}) - Text extraction not available. Please upload as text or use a different format for AI analysis.`;
             }
-            return fullText.trim();
         }
 
         // DOCX: use mammoth to extract raw text
@@ -167,10 +199,12 @@ class AIService {
     async generateSummary(content, resourceTitle = '') {
         const systemPrompt = `You are an expert educational assistant. Create clear, comprehensive summaries of academic content.
 
-STRICT FORMAT REQUIREMENTS:
-- Return PLAIN TEXT ONLY. No Markdown, no bold, no headings, no code fences.
-- No **, #, -, *, or numbered lists. Use simple sentences separated by new lines.
-- Keep it clean and readable for direct display.`;
+FORMATTING REQUIREMENTS:
+- Use clear headings with numbers (1., 2., 3., etc.)
+- Use bullet points (-) for key concepts
+- Use line breaks to separate sections
+- Keep sentences concise and readable
+- Structure the content logically`;
 
         const prompt = `Create a comprehensive summary of this educational content:
 
@@ -180,10 +214,10 @@ Content:
 ${content}
 
 Please provide:
-1. A brief overview (2-3 sentences)
-2. Key concepts and main points
-3. Important details worth remembering
-4. Any examples or case studies mentioned`;
+1. Brief Overview (2-3 sentences)
+2. Key Concepts (bullet points)
+3. Important Details (bullet points)
+4. Examples or Case Studies (if any)`;
 
         try {
             const response = await this.callGeminiAPI(prompt, systemPrompt);
@@ -204,10 +238,12 @@ Please provide:
     async generateStudyPlan(content, resourceTitle = '') {
         const systemPrompt = `You are an expert educational planner. Create structured, actionable study plans that help students learn effectively.
 
-STRICT FORMAT REQUIREMENTS:
-- Return PLAIN TEXT ONLY. No Markdown, no bold, no headings, no code fences.
-- No **, #, -, *, or numbered lists. Use simple sentences and line breaks.
-- Keep it clean and readable for direct display.`;
+FORMATTING REQUIREMENTS:
+- Use clear headings with numbers (1., 2., 3., etc.)
+- Use bullet points (-) for activities and tasks
+- Use line breaks to separate sections
+- Include time estimates for each activity
+- Structure the content logically`;
 
         const prompt = `Create a detailed study plan for this educational content:
 
@@ -217,12 +253,12 @@ Content:
 ${content}
 
 Please provide:
-1. Learning objectives (what students should achieve)
-2. Study schedule breakdown (sessions with time estimates)
-3. Key activities for each session (reading, practice, review)
-4. Self-assessment methods
-5. Review schedule recommendations
-6. Additional resources or practice suggestions`;
+1. Learning Objectives (what students should achieve)
+2. Study Schedule Breakdown (sessions with time estimates)
+3. Key Activities for Each Session (reading, practice, review)
+4. Self-Assessment Methods
+5. Review Schedule Recommendations
+6. Additional Resources or Practice Suggestions`;
 
         try {
             const response = await this.callGeminiAPI(prompt, systemPrompt);
@@ -372,6 +408,8 @@ Focus on:
                     return await this.generateStudyPlan(content, resourceTitle);
                 case 'flashcards':
                     return await this.generateFlashcards(content, resourceTitle);
+                case 'comprehensive':
+                    return await this.generateComprehensiveAnalysis(content, resourceTitle);
                 default:
                     throw new Error('Invalid generation type');
             }
@@ -381,13 +419,42 @@ Focus on:
         }
     }
 
+    /**
+     * Generate comprehensive analysis (summary, study plan, and flashcards)
+     */
+    async generateComprehensiveAnalysis(content, resourceTitle = '') {
+        try {
+            // Generate all three types concurrently for better performance
+            const [summary, studyPlan, flashcards] = await Promise.all([
+                this.generateSummary(content, resourceTitle),
+                this.generateStudyPlan(content, resourceTitle), 
+                this.generateFlashcards(content, resourceTitle)
+            ]);
+
+            return {
+                summary: summary.content,
+                studyPlan: studyPlan.content,
+                flashcards: flashcards.content.flashcards || [],
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Comprehensive analysis error:', error);
+            throw new Error(`Failed to generate comprehensive analysis: ${error.message}`);
+        }
+    }
+
     async processResourceFromUrl(url, generationType, resourceTitle = '') {
-        const fileName = resourceTitle || url.split('/').pop() || 'resource';
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('Failed to fetch resource content');
-        const blob = await resp.blob();
-        const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
-        return this.processResource(file, generationType, resourceTitle || fileName);
+        try {
+            const fileName = resourceTitle || url.split('/').pop() || 'resource';
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`Failed to fetch resource content (${resp.status})`);
+            const blob = await resp.blob();
+            const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
+            return await this.processResource(file, generationType, resourceTitle || fileName);
+        } catch (error) {
+            console.error('Error processing resource from URL:', error);
+            throw error;
+        }
     }
 
     /**
@@ -454,16 +521,15 @@ Focus on:
 
     sanitizeOutput(text) {
         if (!text) return '';
-        // Remove common Markdown markers and normalize whitespace
+        // Preserve basic formatting while cleaning up
         let out = text
             .replace(/\*\*+/g, '')          // remove bold markers
-            .replace(/^\s*#+\s*/gm, '')     // remove headings
-            .replace(/^\s*[-*]\s+/gm, '')   // remove bullets
-            .replace(/```[\s\S]*?```/g, '') // remove fenced code blocks
-            .replace(/\r/g, '')
+            .replace(/\r/g, '')              // remove carriage returns
             .trim();
-        // Collapse excessive blank lines
-        out = out.replace(/\n{3,}/g, '\n\n');
+        
+        // Convert line breaks to HTML breaks for better display
+        out = out.replace(/\n/g, '<br>');
+        
         return out;
     }
 

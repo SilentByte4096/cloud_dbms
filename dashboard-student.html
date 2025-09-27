@@ -262,7 +262,6 @@
                         <div id="suggestedFlashcards" class="ai-content">
                             <!-- AI-suggested flashcards will appear here -->
                         </div>
-                        <button class="btn-primary" onclick="createFlashcardsFromAI()">Create These Flashcards</button>
                     </div>
                 </div>
             </section>
@@ -275,12 +274,8 @@
 
                 <div class="grade-summary">
                     <div class="grade-card">
-                        <h3>Overall GPA</h3>
-                        <div class="grade-value" id="overallGPA">-</div>
-                    </div>
-                    <div class="grade-card">
-                        <h3>GPA</h3>
-                        <div class="grade-value" id="gpaValue">-</div>
+                        <h3>Overall Grade</h3>
+                        <div class="grade-value" id="overallGrade">-</div>
                     </div>
                 </div>
 
@@ -308,6 +303,13 @@
                 <div class="form-group">
                     <label>Chapter</label>
                     <input type="text" id="resourceChapter" required>
+                </div>
+                <div class="form-group">
+                    <label>Class (Optional)</label>
+                    <select id="resourceClass">
+                        <option value="">Personal Resource</option>
+                        <!-- Classes will be populated by JavaScript -->
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Type</label>

@@ -645,9 +645,9 @@ async function loadSubmissions(status = 'pending') {
             .eq('assignments.teacher_id', teacherId)
             .order('submitted_at', { ascending: false });
         if (status === 'pending') {
-            query = query.is('grades.id', null);
+            query = query.is('grades', null);
         } else if (status === 'graded') {
-            query = query.not('grades.id', 'is', null);
+            query = query.not('grades', 'is', null);
         }
         const { data, error } = await query;
         if (error) throw error;
@@ -1208,6 +1208,31 @@ async function loadTeacherResources() {
         if (!window.appState || !window.appState.currentUser) return;
         const teacherId = window.appState.currentUser.id;
         
+        // First, get all classes for this teacher
+        const { data: classes, error: classesError } = await window.supabase
+            .from('classes')
+            .select('id, name')
+            .eq('teacher_id', teacherId);
+            
+        if (classesError) {
+            console.error('Error loading classes:', classesError);
+            throw classesError;
+        }
+        
+        if (!classes || classes.length === 0) {
+            const grid = document.getElementById('resourcesGrid');
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No classes found</h3>
+                    <p>Create a class first to upload resources</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const classIds = classes.map(c => c.id);
+        
+        // Get resources for these classes
         const { data: resources, error } = await window.supabase
             .from('class_resources')
             .select(`
@@ -1215,14 +1240,24 @@ async function loadTeacherResources() {
                 resources!inner(*),
                 classes!inner(name)
             `)
-            .eq('classes.teacher_id', teacherId)
+            .in('class_id', classIds)
             .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+            console.error('Error loading resources:', error);
+            throw error;
+        }
 
         displayTeacherResources(resources || []);
     } catch (error) {
         console.error('Error loading teacher resources:', error);
+        const grid = document.getElementById('resourcesGrid');
+        grid.innerHTML = `
+            <div class="empty-state">
+                <h3>Error loading resources</h3>
+                <p>${error.message}</p>
+            </div>
+        `;
     }
 }
 
@@ -1230,7 +1265,13 @@ function displayTeacherResources(classResources) {
     const grid = document.getElementById('resourcesGrid');
     
     if (classResources.length === 0) {
-        window.utils.showEmptyState(grid, 'No class resources', 'Upload resources to share with your students');
+        grid.innerHTML = `
+            <div class="empty-state">
+                <h3>No class resources</h3>
+                <p>Upload resources to share with your students</p>
+                <button class="btn-primary" onclick="showUploadResourceModal()">Upload Resource</button>
+            </div>
+        `;
         return;
     }
     const teacherId = window.appState?.currentUser?.id;
@@ -1495,9 +1536,68 @@ async function deleteResource(resourceId){
 
 function initializeEventListeners() {
     window.addEventListener('click', event => {
-        ['createClassModal', 'createAssignmentModal', 'gradeModal', 'rosterModal', 'gradeItemsModal'].forEach(modalId => {
+        ['createClassModal', 'createAssignmentModal', 'gradeModal', 'rosterModal', 'gradeItemsModal', 'uploadResourceModal'].forEach(modalId => {
             const modal = document.getElementById(modalId);
             if (event.target === modal) modal.style.display = 'none';
         });
     });
 }
+
+// Logout function
+async function logout() {
+    try {
+        await window.supabase.auth.signOut();
+        window.location.href = 'index.html';
+    } catch (error) {
+        console.error('Error logging out:', error);
+        window.location.href = 'index.html';
+    }
+}
+
+// Global function exposures
+window.showCreateClassModal = showCreateClassModal;
+window.closeCreateClassModal = closeCreateClassModal;
+window.handleCreateClass = handleCreateClass;
+window.showCreateAssignmentModal = showCreateAssignmentModal;
+window.closeCreateAssignmentModal = closeCreateAssignmentModal;
+window.handleCreateAssignment = handleCreateAssignment;
+window.showGradeModal = showGradeModal;
+window.closeGradeModal = closeGradeModal;
+window.handleGradeSubmit = handleGradeSubmit;
+window.loadSubmissions = loadSubmissions;
+window.showSubmissions = showSubmissions;
+window.loadGradesManagement = loadGradesManagement;
+window.filterGrades = filterGrades;
+window.openRosterModal = openRosterModal;
+window.closeRosterModal = closeRosterModal;
+window.showCreateFlashcardModal = showCreateFlashcardModal;
+window.closeCreateFlashcardModal = closeCreateFlashcardModal;
+window.handleCreateFlashcardSet = handleCreateFlashcardSet;
+window.addFlashcardInput = addFlashcardInput;
+window.removeFlashcardInput = removeFlashcardInput;
+window.openTeacherFlashcardSet = openTeacherFlashcardSet;
+window.closeTeacherFlashcardViewer = closeTeacherFlashcardViewer;
+window.teacherNextCard = teacherNextCard;
+window.teacherPrevCard = teacherPrevCard;
+window.teacherFlipCard = teacherFlipCard;
+window.loadTeacherResources = loadTeacherResources;
+window.showUploadResourceModal = showUploadResourceModal;
+window.closeUploadResourceModal = closeUploadResourceModal;
+window.handleResourceUpload = handleResourceUpload;
+window.toggleResourceFeatured = toggleResourceFeatured;
+window.viewResource = viewResource;
+window.removeResourceFromClass = removeResourceFromClass;
+window.deleteResource = deleteResource;
+window.deleteClass = deleteClass;
+window.deleteAssignment = deleteAssignment;
+window.viewAssignmentSubmissions = viewAssignmentSubmissions;
+window.toggleFlashcardSelector = toggleFlashcardSelector;
+window.loadClasses = loadClasses;
+window.loadAssignments = loadAssignments;
+window.loadTeacherFlashcards = loadTeacherFlashcards;
+window.deleteFlashcardSet = deleteFlashcardSet;
+window.loadRecentSubmissions = loadRecentSubmissions;
+window.loadDashboardData = loadDashboardData;
+window.loadUserInfo = loadUserInfo;
+window.showSection = showSection;
+window.logout = logout;

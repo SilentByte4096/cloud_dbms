@@ -78,7 +78,7 @@ async function loadDashboardData() {
         const userId = window.appState.currentUser.id;
         
         // Load stats with error handling
-        const [classes, assignments, flashcardSets, studySessions, gpa] = await Promise.allSettled([
+        const [classes, assignments, flashcardSets, studySessions, grades] = await Promise.allSettled([
             window.supabase.from('class_enrollments').select('id').eq('student_id', userId).eq('is_active', true),
             window.supabase.from('assignments').select(`
                 id,
@@ -87,7 +87,11 @@ async function loadDashboardData() {
             `).eq('submissions.student_id', userId).is('submissions.id', null),
             window.supabase.from('flashcard_sets').select('id').eq('user_id', userId),
             window.supabase.from('study_sessions').select('duration_minutes').eq('user_id', userId).eq('completed', true),
-            window.supabase.from('student_gpa').select('overall_gpa').eq('student_id', userId).single()
+            window.supabase.from('grades').select(`
+                points,
+                max_points,
+                submissions!inner(student_id)
+            `).eq('submissions.student_id', userId)
         ]);
 
         // Update stats with safe access
@@ -98,20 +102,27 @@ async function loadDashboardData() {
                 (!a.flashcard_attempts || a.flashcard_attempts.length === 0 || !a.flashcard_attempts[0].completed_at)
             ).length || 0 : 0;
         const flashcardCount = flashcardSets.status === 'fulfilled' ? flashcardSets.value.data?.length || 0 : 0;
-        const overallGPA = gpa.status === 'fulfilled' ? gpa.value.data?.overall_gpa?.toFixed(1) || '0.0' : '0.0';
+        
+        // Calculate overall grade percentage
+        let overallGrade = '0.0';
+        if (grades.status === 'fulfilled' && grades.value.data && grades.value.data.length > 0) {
+            const totalPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade.points), 0);
+            const totalMaxPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade.max_points), 0);
+            if (totalMaxPoints > 0) {
+                overallGrade = ((totalPoints / totalMaxPoints) * 100).toFixed(1);
+            }
+        }
 
         // Update DOM elements safely
         const classCountEl = document.getElementById('classCount');
         const assignmentCountEl = document.getElementById('assignmentCount');
         const flashcardCountEl = document.getElementById('flashcardCount');
-        const overallGPAEl = document.getElementById('overallGPA');
-        const gpaValueEl = document.getElementById('gpaValue');
+        const overallGradeEl = document.getElementById('overallGrade');
 
         if (classCountEl) classCountEl.textContent = classCount;
         if (assignmentCountEl) assignmentCountEl.textContent = pendingAssignments;
         if (flashcardCountEl) flashcardCountEl.textContent = flashcardCount;
-        if (overallGPAEl) overallGPAEl.textContent = overallGPA;
-        if (gpaValueEl) gpaValueEl.textContent = overallGPA;
+        if (overallGradeEl) overallGradeEl.textContent = overallGrade + '%';
 
         // Calculate study time
         if (studySessions.status === 'fulfilled' && studySessions.value.data) {
@@ -1482,8 +1493,7 @@ async function handleCreateFlashcardSet(event) {
                 .insert([{
                     user_id: userId,
                     name: setName,
-                    subject: subject || 'General',
-                    description: `Flashcard set for ${subject || 'general study'}`
+                    subject: subject || 'General'
                 }])
                 .select()
                 .single();
@@ -1951,15 +1961,39 @@ async function loadGrades() {
     try {
         const userId = window.appState.currentUser.id;
         
+        // Get grades with assignment and class information using a simpler approach
         const { data: grades, error } = await window.supabase
-            .from('student_grades')
-            .select('*')
-            .eq('student_id', userId);
+            .from('grades')
+            .select(`
+                points,
+                max_points,
+                submissions!inner(
+                    student_id,
+                    assignment_id,
+                    assignments!inner(
+                        title,
+                        class_id,
+                        classes!inner(name)
+                    )
+                )
+            `)
+            .eq('submissions.student_id', userId);
 
         const container = document.getElementById('gradesPerClass');
         if (!container) return;
 
-        if (error || !grades || grades.length === 0) {
+        if (error) {
+            console.error('Error loading grades:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Error loading grades</h3>
+                    <p>${error.message}</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (!grades || grades.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <h3>No grades available</h3>
@@ -1969,33 +2003,57 @@ async function loadGrades() {
             return;
         }
 
-        container.innerHTML = grades.map(grade => {
-            const overallGrade = (grade.assignment_avg * 0.6 + grade.test_avg * 0.3 + grade.flashcard_avg * 0.1).toFixed(1);
+        // Group grades by class
+        const gradesByClass = {};
+        grades.forEach(grade => {
+            const className = grade.submissions.assignments.classes.name;
+            if (!gradesByClass[className]) {
+                gradesByClass[className] = [];
+            }
+            gradesByClass[className].push({
+                title: grade.submissions.assignments.title,
+                points: parseFloat(grade.points),
+                maxPoints: parseFloat(grade.max_points),
+                percentage: (parseFloat(grade.points) / parseFloat(grade.max_points)) * 100
+            });
+        });
+
+        // Display grades by class
+        container.innerHTML = Object.entries(gradesByClass).map(([className, classGrades]) => {
+            const totalPoints = classGrades.reduce((sum, grade) => sum + grade.points, 0);
+            const totalMaxPoints = classGrades.reduce((sum, grade) => sum + grade.maxPoints, 0);
+            const classAverage = totalMaxPoints > 0 ? ((totalPoints / totalMaxPoints) * 100).toFixed(1) : 0;
+
+            const gradeItemsHtml = classGrades.map(grade => `
+                <div class="grade-item">
+                    <span>${grade.title}:</span>
+                    <span>${grade.percentage.toFixed(1)}% (${grade.points}/${grade.maxPoints})</span>
+                </div>
+            `).join('');
+
             return `
                 <div class="grade-card">
-                    <h3>${grade.class_name}</h3>
+                    <h3>${className}</h3>
                     <div class="grade-overview">
-                        <div class="grade-value">${overallGrade}%</div>
+                        <div class="grade-value">${classAverage}%</div>
                     </div>
                     <div class="grade-breakdown">
-                        <div class="grade-item">
-                            <span>Assignments:</span>
-                            <span>${grade.assignment_avg?.toFixed(1) || 0}%</span>
-                        </div>
-                        <div class="grade-item">
-                            <span>Tests:</span>
-                            <span>${grade.test_avg?.toFixed(1) || 0}%</span>
-                        </div>
-                        <div class="grade-item">
-                            <span>Flashcards:</span>
-                            <span>${grade.flashcard_avg?.toFixed(1) || 0}%</span>
-                        </div>
+                        ${gradeItemsHtml}
                     </div>
                 </div>
             `;
         }).join('');
     } catch (error) {
         console.error('Error loading grades:', error);
+        const container = document.getElementById('gradesPerClass');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Error loading grades</h3>
+                    <p>Please try again later</p>
+                </div>
+            `;
+        }
     }
 }
 
@@ -2641,7 +2699,7 @@ async function analyzeResource(resourceId, resourceName) {
         // Get resource details
         const { data: resource, error } = await window.supabase
             .from('resources')
-            .select('file_url')
+            .select('file_url, title, description')
             .eq('id', resourceId)
             .single();
 
@@ -2654,51 +2712,97 @@ async function analyzeResource(resourceId, resourceName) {
         
         document.getElementById('selectedResourceName').textContent = resourceName;
         
-        // Simulate AI analysis (in real app, you'd call an AI service)
+        // Initialize loading states
         const summaryDiv = document.getElementById('documentSummary');
         const planDiv = document.getElementById('studyPlan');
         const flashcardsDiv = document.getElementById('suggestedFlashcards');
         
-        summaryDiv.innerHTML = '<p>Analyzing document...</p>';
-        planDiv.innerHTML = '<p>Creating study plan...</p>';
-        flashcardsDiv.innerHTML = '<p>Generating flashcards...</p>';
+        summaryDiv.innerHTML = '<div class="ai-loading"><div class="spinner"></div><p>Analyzing document with AI...</p></div>';
+        planDiv.innerHTML = '<div class="ai-loading"><div class="spinner"></div><p>Creating personalized study plan...</p></div>';
+        flashcardsDiv.innerHTML = '<div class="ai-loading"><div class="spinner"></div><p>Generating flashcards...</p></div>';
         
-        // Simulate delay
-        setTimeout(() => {
-            summaryDiv.innerHTML = `
-                <p>This document covers key concepts in the selected subject area. Main topics include:</p>
-                <ul>
-                    <li>Introduction and foundational concepts</li>
-                    <li>Core principles and methodologies</li>
-                    <li>Practical applications and examples</li>
-                    <li>Advanced topics and best practices</li>
-                </ul>
-            `;
+        try {
+            // Initialize AI service if not already done
+            if (!window.aiService) {
+                // Load the AI service script if not already loaded
+                if (typeof AIService === 'undefined') {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = './js/ai-service.js';
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.head.appendChild(script);
+                    });
+                }
+                window.aiService = new AIService();
+            }
+
+            // Get the resource file URL
+            let fileUrl = resource.file_url;
+            if (!fileUrl.startsWith('http')) {
+                // If it's a storage path, get the public URL
+                const { data: urlData } = window.supabase.storage
+                    .from('study-hub')
+                    .getPublicUrl(resource.file_url);
+                fileUrl = urlData.publicUrl;
+            }
+
+            // Process the resource with AI service
+            const aiResponse = await window.aiService.processResourceFromUrl(
+                fileUrl, 
+                'comprehensive', 
+                resource.title || resourceName || 'Study Resource'
+            );
+
+            if (aiResponse.error) {
+                throw new Error(aiResponse.error);
+            }
+
+            // Update summary
+            summaryDiv.innerHTML = aiResponse.summary ? 
+                `<div class="ai-content">${aiResponse.summary}</div>` : 
+                '<div class="ai-error">No summary could be generated for this resource.</div>';
             
-            planDiv.innerHTML = `
-                <ol>
-                    <li><strong>Week 1:</strong> Review foundational concepts (2 hours/day)</li>
-                    <li><strong>Week 2:</strong> Practice with examples and exercises (1.5 hours/day)</li>
-                    <li><strong>Week 3:</strong> Deep dive into advanced topics (2 hours/day)</li>
-                    <li><strong>Week 4:</strong> Review and self-assessment (1 hour/day)</li>
-                </ol>
-            `;
+            // Update study plan
+            if (aiResponse.studyPlan) {
+                planDiv.innerHTML = `<div class="ai-content">${aiResponse.studyPlan}</div>`;
+            } else {
+                planDiv.innerHTML = '<div class="ai-error">No study plan could be generated for this resource.</div>';
+            }
             
-            flashcardsDiv.innerHTML = `
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> What is the main concept discussed in chapter 1?<br>
-                    <strong>A:</strong> The foundational principles and their applications.
-                </div>
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> List three key methodologies mentioned.<br>
-                    <strong>A:</strong> 1) Systematic approach, 2) Iterative process, 3) Continuous improvement.
-                </div>
-                <div class="flashcard-preview">
-                    <strong>Q:</strong> What are the practical applications?<br>
-                    <strong>A:</strong> Real-world implementation in various scenarios and contexts.
-                </div>
-            `;
-        }, 2000);
+            // Update flashcards
+            if (aiResponse.flashcards && aiResponse.flashcards.length > 0) {
+                const flashcardsHtml = aiResponse.flashcards.map(card => 
+                    `<div class="flashcard-preview">
+                        <div class="flashcard-q"><strong>Q:</strong> ${card.question}</div>
+                        <div class="flashcard-a"><strong>A:</strong> ${card.answer}</div>
+                    </div>`
+                ).join('');
+                flashcardsDiv.innerHTML = `
+                    <div class="ai-content">
+                        ${flashcardsHtml}
+                    </div>
+                `;
+            } else {
+                flashcardsDiv.innerHTML = '<div class="ai-error">No flashcards could be generated for this resource.</div>';
+            }
+
+        } catch (aiError) {
+            console.error('AI processing error:', aiError);
+            
+            let errorMessage = 'Unable to process this resource with AI.';
+            if (aiError.message.includes('API key')) {
+                errorMessage = 'AI service is not configured. Please check the API key setup.';
+            } else if (aiError.message.includes('fetch') || aiError.message.includes('network')) {
+                errorMessage = 'Unable to access the resource file. Please check file availability.';
+            } else if (aiError.message.includes('quota') || aiError.message.includes('limit')) {
+                errorMessage = 'AI service quota exceeded. Please try again later.';
+            }
+            
+            summaryDiv.innerHTML = `<div class="ai-error">${errorMessage}</div>`;
+            planDiv.innerHTML = `<div class="ai-error">${errorMessage}</div>`;
+            flashcardsDiv.innerHTML = `<div class="ai-error">${errorMessage}</div>`;
+        }
         
     } catch (error) {
         console.error('Error analyzing resource:', error);
@@ -2711,13 +2815,6 @@ async function analyzeResource(resourceId, resourceName) {
 function closeAIResults() {
     document.getElementById('aiResults').style.display = 'none';
     document.getElementById('aiResourcesList').parentElement.style.display = 'block';
-}
-
-function createFlashcardsFromAI() {
-    // This would create flashcards from AI suggestions
-    if (window.utils?.showNotification) {
-        window.utils.showNotification('Flashcard creation from AI is coming soon!', 'info');
-    }
 }
 
 // Delete resource function
@@ -2787,8 +2884,8 @@ window.showResourceType = showResourceType;
 window.loadClasses = loadClasses;
 window.analyzeResource = analyzeResource;
 window.closeAIResults = closeAIResults;
-window.createFlashcardsFromAI = createFlashcardsFromAI;
 window.loadAIResources = loadAIResources;
+window.loadGrades = loadGrades;
 window.submitAssignment = submitAssignment;
 window.closeAssignmentSubmissionModal = closeAssignmentSubmissionModal;
 window.handleAssignmentSubmission = handleAssignmentSubmission;

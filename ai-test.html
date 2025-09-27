@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            background: #1d4ed8;
+        }
+        
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #dc2626;
+            background: #fef2f2;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #fecaca;
+        }
+        
+        .success {
+            color: #059669;
+            background: #f0fdf4;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .result {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 4px;
+            border-left: 4px solid #2563eb;
+        }
+        
+        pre {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 AI Assistant Test Page</h1>
+    
+    <div class="test-card">
+        <h2>API Configuration Test</h2>
+        <p>Check if the Gemini API key is properly configured.</p>
+        <button class="btn" onclick="testAPIConfig()">Test API Config</button>
+        <div id="api-config-result"></div>
+    </div>
+    
+    <div class="test-card">
+        <h2>Basic AI Service Test</h2>
+        <p>Test a simple text processing request.</p>
+        <button class="btn" onclick="testBasicAI()">Test Basic AI</button>
+        <div id="basic-ai-result"></div>
+    </div>
+    
+    <div class="test-card">
+        <h2>File Upload Test</h2>
+        <p>Upload a text file and test AI processing.</p>
+        <input type="file" id="test-file" accept=".txt,.md,.pdf,.docx">
+        <button class="btn" onclick="testFileProcessing()">Process File</button>
+        <div id="file-processing-result"></div>
+    </div>
+    
+    <div class="test-card">
+        <h2>URL Processing Test</h2>
+        <p>Test processing a resource from a URL.</p>
+        <input type="url" id="test-url" placeholder="Enter resource URL" style="width: 300px; padding: 5px;">
+        <button class="btn" onclick="testURLProcessing()">Process URL</button>
+        <div id="url-processing-result"></div>
+    </div>
+
+    <script src="js/ai-service.js"></script>
+    <script>
+        let aiService;
+
+        async function initializeAI() {
+            if (!aiService) {
+                try {
+                    aiService = new AIService();
+                    console.log('AI Service initialized');
+                } catch (error) {
+                    console.error('Failed to initialize AI service:', error);
+                }
+            }
+        }
+
+        async function testAPIConfig() {
+            const resultDiv = document.getElementById('api-config-result');
+            resultDiv.innerHTML = '<div class="loading">Testing API configuration...</div>';
+            
+            try {
+                await initializeAI();
+                
+                if (aiService.API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
+                    resultDiv.innerHTML = '<div class="error">❌ API key not configured. Please update js/ai-service.js with your Gemini API key.</div>';
+                    return;
+                }
+                
+                // Test a minimal API call
+                const testPrompt = 'Say "Hello, AI test successful!" and nothing else.';
+                const response = await aiService.callGeminiAPI(testPrompt);
+                
+                resultDiv.innerHTML = `
+                    <div class="success">✅ API configuration successful!</div>
+                    <div class="result">
+                        <strong>Test Response:</strong><br>
+                        ${response}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('API config test error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ API configuration failed: ${error.message}</div>`;
+            }
+        }
+
+        async function testBasicAI() {
+            const resultDiv = document.getElementById('basic-ai-result');
+            resultDiv.innerHTML = '<div class="loading">Testing basic AI functionality...</div>';
+            
+            try {
+                await initializeAI();
+                
+                const testContent = `
+                    Title: Introduction to Machine Learning
+                    
+                    Machine learning is a branch of artificial intelligence that focuses on building systems that learn from data. Key concepts include:
+                    
+                    1. Supervised Learning: Training models with labeled data
+                    2. Unsupervised Learning: Finding patterns in unlabeled data  
+                    3. Deep Learning: Using neural networks with multiple layers
+                    4. Feature Engineering: Selecting and transforming input variables
+                    
+                    Applications include image recognition, natural language processing, and recommendation systems.
+                `;
+                
+                const result = await aiService.generateComprehensiveAnalysis(testContent, 'Machine Learning Basics');
+                
+                resultDiv.innerHTML = `
+                    <div class="success">✅ Basic AI test successful!</div>
+                    <div class="result">
+                        <strong>Summary:</strong><br>
+                        ${result.summary}
+                    </div>
+                    <div class="result">
+                        <strong>Study Plan (${result.studyPlan.length} items):</strong><br>
+                        ${result.studyPlan.map((item, i) => `${i+1}. ${item}`).join('<br>')}
+                    </div>
+                    <div class="result">
+                        <strong>Flashcards (${result.flashcards.length} cards):</strong><br>
+                        ${result.flashcards.map(card => `<strong>Q:</strong> ${card.question}<br><strong>A:</strong> ${card.answer}<br><br>`).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Basic AI test error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ Basic AI test failed: ${error.message}</div>`;
+            }
+        }
+
+        async function testFileProcessing() {
+            const fileInput = document.getElementById('test-file');
+            const resultDiv = document.getElementById('file-processing-result');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                resultDiv.innerHTML = '<div class="error">❌ Please select a file first.</div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<div class="loading">Processing file with AI...</div>';
+            
+            try {
+                await initializeAI();
+                
+                const file = fileInput.files[0];
+                const result = await aiService.processResource(file, 'comprehensive', file.name);
+                
+                resultDiv.innerHTML = `
+                    <div class="success">✅ File processing successful!</div>
+                    <div class="result">
+                        <strong>File:</strong> ${file.name} (${Math.round(file.size/1024)} KB)
+                    </div>
+                    <div class="result">
+                        <strong>Summary:</strong><br>
+                        ${result.summary}
+                    </div>
+                    <div class="result">
+                        <strong>Study Plan:</strong><br>
+                        ${result.studyPlan.map((item, i) => `${i+1}. ${item}`).join('<br>')}
+                    </div>
+                    <div class="result">
+                        <strong>Generated ${result.flashcards.length} flashcards</strong>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('File processing error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ File processing failed: ${error.message}</div>`;
+            }
+        }
+
+        async function testURLProcessing() {
+            const urlInput = document.getElementById('test-url');
+            const resultDiv = document.getElementById('url-processing-result');
+            
+            if (!urlInput.value) {
+                resultDiv.innerHTML = '<div class="error">❌ Please enter a URL first.</div>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<div class="loading">Processing URL with AI...</div>';
+            
+            try {
+                await initializeAI();
+                
+                const url = urlInput.value;
+                const result = await aiService.processResourceFromUrl(url, 'comprehensive', 'Web Resource');
+                
+                resultDiv.innerHTML = `
+                    <div class="success">✅ URL processing successful!</div>
+                    <div class="result">
+                        <strong>URL:</strong> ${url}
+                    </div>
+                    <div class="result">
+                        <strong>Summary:</strong><br>
+                        ${result.summary}
+                    </div>
+                    <div class="result">
+                        <strong>Study Plan:</strong><br>
+                        ${result.studyPlan.map((item, i) => `${i+1}. ${item}`).join('<br>')}
+                    </div>
+                    <div class="result">
+                        <strong>Generated ${result.flashcards.length} flashcards</strong>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('URL processing error:', error);
+                resultDiv.innerHTML = `<div class="error">❌ URL processing failed: ${error.message}</div>`;
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeAI);
+    </script>
+</body>
+</html>

@@ -307,7 +307,7 @@
 
 .resources-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 1.5rem;
 }
 
@@ -365,7 +365,8 @@
 
 .resource-actions {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
     align-items: center;
 }
 
@@ -966,6 +967,92 @@
     color: var(--gray-600);
 }
 
+/* AI Loading States */
+.ai-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    min-height: 120px;
+    text-align: center;
+}
+
+.ai-loading .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--gray-200);
+    border-top: 3px solid var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.ai-loading p {
+    color: var(--gray-600);
+    font-style: italic;
+    margin: 0;
+}
+
+.ai-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+.study-plan-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--gray-50);
+    border-radius: 8px;
+    border-left: 4px solid var(--primary);
+}
+
+.plan-number {
+    background: var(--primary);
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-right: 0.75rem;
+}
+
+.plan-text {
+    flex: 1;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--gray-700);
+}
+
+.flashcard-q, .flashcard-a {
+    margin-bottom: 0.5rem;
+}
+
+.flashcard-q strong {
+    color: var(--primary);
+}
+
+.flashcard-a strong {
+    color: #059669;
+}
+
 /* Flashcard Viewer Flip Styles */
 .flashcard { perspective: 1000px; }
 .flashcard-inner {
@@ -1198,6 +1285,7 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     border: 1px solid #e0e0e0;
     transition: all 0.3s ease;
+    min-height: 200px;
 }
 
 .resource-card:hover {
@@ -1240,8 +1328,15 @@
 
 .resource-actions {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-top: 15px;
+}
+
+.resource-actions .btn-small {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    min-width: auto;
 }
 
 /* Flashcard Set Cards */
