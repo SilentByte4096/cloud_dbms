@@ -2298,7 +2298,7 @@ async function loadResourceComments() {
                     <span class="comment-author">${comment.profiles?.full_name || 'Anonymous'}</span>
                     <span class="comment-time">${formatTimeAgo(comment.created_at)}</span>
                 </div>
-                <div class="comment-content">${comment.content}</div>
+                <div class="comment-content">${comment.comment}</div>
             </div>
         `).join('');
     } catch (error) {
@@ -2320,7 +2320,7 @@ async function submitComment() {
             .insert({
                 resource_id: currentResourceId,
                 user_id: userId,
-                content: content
+                comment: content
             });
 
         if (error) throw error;
