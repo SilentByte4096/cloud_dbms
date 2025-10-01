@@ -1,15 +1,37 @@
+// --- Env: Gemini API key loader (safe in non-ESM) ---
+
+let GEMINI_API_KEY = '';
+
+// Next.js / CRA / Webpack (replaced at build time)
+if (typeof process !== 'undefined' && process.env) {
+  GEMINI_API_KEY =
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY || // Next.js client env
+    process.env.REACT_APP_GEMINI_API_KEY ||   // CRA client env
+    process.env.GEMINI_API_KEY ||             // Optional generic fallback if defined by bundler
+    GEMINI_API_KEY;
+}
+
+// Optional runtime injection (e.g., served via <script> that sets window.__ENV = { GEMINI_API_KEY: '...' })
+if (typeof window !== 'undefined' && window.__ENV && window.__ENV.GEMINI_API_KEY) {
+  GEMINI_API_KEY = window.__ENV.GEMINI_API_KEY;
+}
+
+// ↓ Ensure the class uses the env-loaded value
+// class AIService {
+
+
+
 // ========================================
 // AI SERVICE - GEMINI INTEGRATION
 // ========================================
 
 class AIService {
     constructor() {
-        // TODO: Replace with your actual Gemini API key
-        this.API_KEY = 'AIzaSyAjeR4L2l8OTWrzT13IXKnQgTwrO4qGH2M'; // <-- PASTE YOUR API KEY HERE
-        this.BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-        this.MODEL = 'gemini-2.0-flash-exp'; // Using Gemini 2.0 Flash
-        this.libsLoaded = { pdfjs: false, mammoth: false };
-    }
+    this.API_KEY = GEMINI_API_KEY || '';
+    this.BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+    this.MODEL = 'gemini-2.0-flash-exp';
+    this.libsLoaded = { pdfjs: false, mammoth: false };
+  }
 
     // Dynamically load external libs on demand
     async loadScript(src) {
