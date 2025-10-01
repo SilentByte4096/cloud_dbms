@@ -89,8 +89,11 @@ async function loadDashboardData() {
             window.supabase.from('study_sessions').select('duration_minutes').eq('user_id', userId).eq('completed', true),
             window.supabase.from('grades').select(`
                 points,
-                max_points,
-                submissions!inner(student_id)
+                submissions!inner(
+                    student_id,
+                    assignment_id,
+                    assignments!inner(max_points)
+                )
             `).eq('submissions.student_id', userId)
         ]);
 
@@ -106,8 +109,8 @@ async function loadDashboardData() {
         // Calculate overall grade percentage
         let overallGrade = '0.0';
         if (grades.status === 'fulfilled' && grades.value.data && grades.value.data.length > 0) {
-            const totalPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade.points), 0);
-            const totalMaxPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade.max_points), 0);
+            const totalPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade.points || 0), 0);
+            const totalMaxPoints = grades.value.data.reduce((sum, grade) => sum + parseFloat(grade?.submissions?.assignments?.max_points || 0), 0);
             if (totalMaxPoints > 0) {
                 overallGrade = ((totalPoints / totalMaxPoints) * 100).toFixed(1);
             }
@@ -316,13 +319,19 @@ async function loadClassStats(classId) {
             .select('id')
             .eq('class_id', classId);
             
-        // Load grade for this class
-        const { data: grade } = await window.supabase
-            .from('student_grades')
-            .select('*')
-            .eq('student_id', userId)
-            .eq('class_id', classId)
-            .single();
+        // Load grade for this class (compute from assignments and grades)
+        const { data: classGrades, error: gradeError } = await window.supabase
+            .from('grades')
+            .select(`
+                points,
+                submissions!inner(
+                    student_id,
+                    assignment_id,
+                    assignments!inner(max_points, class_id)
+                )
+            `)
+            .eq('submissions.student_id', userId)
+            .eq('submissions.assignments.class_id', classId);
 
         const assignmentCountEl = document.getElementById(`assignments-${classId}`);
         const gradeEl = document.getElementById(`grade-${classId}`);
@@ -331,9 +340,15 @@ async function loadClassStats(classId) {
             assignmentCountEl.textContent = assignments?.length || 0;
         }
 
-        if (gradeEl && grade) {
-            const overallGrade = (grade.assignment_avg * 0.6 + grade.test_avg * 0.3 + grade.flashcard_avg * 0.1).toFixed(1);
-            gradeEl.textContent = `${overallGrade}%`;
+        if (gradeEl) {
+            if (!gradeError && classGrades && classGrades.length > 0) {
+                const totalPts = classGrades.reduce((s, g) => s + parseFloat(g.points || 0), 0);
+                const totalMax = classGrades.reduce((s, g) => s + parseFloat(g?.submissions?.assignments?.max_points || 0), 0);
+                const pct = totalMax > 0 ? ((totalPts / totalMax) * 100).toFixed(1) : '-';
+                gradeEl.textContent = totalMax > 0 ? `${pct}%` : '-';
+            } else {
+                gradeEl.textContent = '-';
+            }
         }
     } catch (error) {
         console.error('Error loading class stats:', error);
@@ -1966,12 +1981,12 @@ async function loadGrades() {
             .from('grades')
             .select(`
                 points,
-                max_points,
                 submissions!inner(
                     student_id,
                     assignment_id,
                     assignments!inner(
                         title,
+                        max_points,
                         class_id,
                         classes!inner(name)
                     )
@@ -2012,9 +2027,9 @@ async function loadGrades() {
             }
             gradesByClass[className].push({
                 title: grade.submissions.assignments.title,
-                points: parseFloat(grade.points),
-                maxPoints: parseFloat(grade.max_points),
-                percentage: (parseFloat(grade.points) / parseFloat(grade.max_points)) * 100
+                points: parseFloat(grade.points || 0),
+                maxPoints: parseFloat(grade.submissions.assignments.max_points || 0),
+                percentage: (parseFloat(grade.points || 0) / Math.max(parseFloat(grade.submissions.assignments.max_points || 0), 1)) * 100
             });
         });
 

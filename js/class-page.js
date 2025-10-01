@@ -67,6 +67,28 @@
       .eq('student_id', user.id)
       .maybeSingle();
 
+    // Compute class grade for this student using grades + assignments.max_points
+    let gradeValue = '—';
+    try {
+      const { data: classGrades } = await window.supabase
+        .from('grades')
+        .select(`
+          points,
+          submissions!inner(
+            student_id,
+            assignment_id,
+            assignments!inner(max_points, class_id)
+          )
+        `)
+        .eq('submissions.student_id', user.id)
+        .eq('submissions.assignments.class_id', classId);
+      if (classGrades && classGrades.length > 0) {
+        const totalPts = classGrades.reduce((s, g) => s + parseFloat(g.points || 0), 0);
+        const totalMax = classGrades.reduce((s, g) => s + parseFloat(g?.submissions?.assignments?.max_points || 0), 0);
+        gradeValue = totalMax > 0 ? `${((totalPts / totalMax) * 100).toFixed(1)}%` : '—';
+      }
+    } catch (_) { /* no-op */ }
+
     const overview = document.getElementById('overviewContent');
     overview.innerHTML = `
       <h3>About this class</h3>
@@ -75,6 +97,7 @@
         <div class="stat-card"><h3>Subject</h3><div class="stat-value">${cls.subject || '—'}</div></div>
         <div class="stat-card"><h3>Code</h3><div class="stat-value">${cls.class_code}</div></div>
         <div class="stat-card"><h3>Status</h3><div class="stat-value">${cls.is_active ? 'Active' : 'Archived'}</div></div>
+        <div class="stat-card"><h3>Grade</h3><div class="stat-value">${gradeValue}</div></div>
       </div>
     `;
 
