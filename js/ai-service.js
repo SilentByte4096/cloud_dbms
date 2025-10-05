@@ -1,5 +1,5 @@
 // --- Proxy URL: use full origin to avoid wrong-origin 405s during dev ---
-const PROXY_URL = 'http://localhost:8787/api/gemini';
+const PROXY_URL = 'http://localhost:3000/api/gemini';
 
 // --- Runtime env loader (client-side, no bundler) ---
 // Not required when using the proxy; kept harmlessly for backward compatibility.
