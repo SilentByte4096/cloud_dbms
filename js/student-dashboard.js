@@ -77,33 +77,43 @@ async function loadDashboardData() {
     try {
         const userId = window.appState.currentUser.id;
         
-        // Load stats with error handling
+        // First get enrolled classes
+        const { data: enrollments } = await window.supabase
+            .from('class_enrollments')
+            .select('class_id')
+            .eq('student_id', userId)
+            .eq('is_active', true);
+            
+        const classIds = enrollments ? enrollments.map(e => e.class_id) : [];
+        
+        // Load stats with error handling, only for enrolled classes
         const [classes, assignments, flashcardSets, studySessions, grades] = await Promise.allSettled([
-            window.supabase.from('class_enrollments').select('id').eq('student_id', userId).eq('is_active', true),
-            window.supabase.from('assignments').select(`
-                id,
+            Promise.resolve({ data: enrollments || [] }),
+            classIds.length > 0 ? window.supabase.from('assignments').select(`
+                id, class_id,
                 submissions!left(id, student_id),
                 flashcard_attempts!left(id, student_id, completed_at)
-            `).eq('submissions.student_id', userId).is('submissions.id', null),
+            `).in('class_id', classIds) : Promise.resolve({ data: [] }),
             window.supabase.from('flashcard_sets').select('id').eq('user_id', userId),
             window.supabase.from('study_sessions').select('duration_minutes').eq('user_id', userId).eq('completed', true),
-            window.supabase.from('grades').select(`
+            classIds.length > 0 ? window.supabase.from('grades').select(`
                 points,
                 submissions!inner(
                     student_id,
                     assignment_id,
-                    assignments!inner(max_points)
+                    assignments!inner(max_points, class_id)
                 )
-            `).eq('submissions.student_id', userId)
+            `).eq('submissions.student_id', userId).in('submissions.assignments.class_id', classIds) : Promise.resolve({ data: [] })
         ]);
 
         // Update stats with safe access
         const classCount = classes.status === 'fulfilled' ? classes.value.data?.length || 0 : 0;
-        const pendingAssignments = assignments.status === 'fulfilled' ? 
-            assignments.value.data?.filter(a => 
-                (!a.submissions || a.submissions.length === 0) && 
-                (!a.flashcard_attempts || a.flashcard_attempts.length === 0 || !a.flashcard_attempts[0].completed_at)
-            ).length || 0 : 0;
+        const pendingAssignments = assignments.status === 'fulfilled' && assignments.value.data ? 
+            assignments.value.data.filter(a => {
+                const hasSubmission = a.submissions && a.submissions.some(s => s.student_id === userId);
+                const hasFlashcardAttempt = a.flashcard_attempts && a.flashcard_attempts.some(fa => fa.student_id === userId && fa.completed_at);
+                return !hasSubmission && !hasFlashcardAttempt;
+            }).length : 0;
         const flashcardCount = flashcardSets.status === 'fulfilled' ? flashcardSets.value.data?.length || 0 : 0;
         
         // Calculate overall grade percentage

@@ -14,7 +14,7 @@ Study Hub is a full-featured educational platform designed to facilitate online 
 - **Assignment System**: Submit assignments, view grades and feedback
 - **Flashcard Learning**: Create personal flashcard sets, complete flashcard assignments
 - **Study Timer**: Pomodoro timer for focused study sessions
-- **AI Assistant**: Analyze resources to generate summaries, study plans, and flashcards
+- **AI Assistant**: Google Gemini-powered analysis of uploaded documents (PDF/DOCX) and URLs to generate summaries, study plans, and flashcards with intelligent content parsing
 - **Grade Tracking**: View grades across all classes with detailed breakdowns
 - **Commenting System**: Engage with peers through resource comments
 
@@ -29,18 +29,27 @@ Study Hub is a full-featured educational platform designed to facilitate online 
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **HTML5**: Semantic markup structure
-- **CSS3**: Modern styling with custom properties and responsive design
-- **JavaScript (ES6+)**: Interactive functionality and state management
-- **No Framework**: Pure vanilla JavaScript for optimal performance
+- **React 18**: Modern component-based UI framework (src/ directory)
+- **TypeScript**: Type-safe development with modern JS features
+- **Vite**: Fast build tool and development server
+- **TailwindCSS**: Utility-first CSS framework for rapid styling
+- **HTML5**: Semantic markup structure for standalone pages
+- **Vanilla JavaScript**: Interactive functionality for dashboard pages
+- **ESLint**: Code quality and consistency
 
 ### Backend & Database
 - **Supabase**: Backend-as-a-Service providing:
-  - PostgreSQL database
-  - Authentication (email/password)
+  - PostgreSQL database with advanced features
+  - Authentication (email/password with role-based access)
   - Real-time subscriptions
   - Storage for file uploads
-  - Row Level Security (RLS)
+  - Row Level Security (RLS) policies
+- **Node.js**: Server-side JavaScript runtime (server.js)
+
+### External APIs
+- **Google Gemini AI**: AI-powered content analysis and generation
+- **PDF.js**: Client-side PDF processing
+- **Mammoth.js**: DOCX document parsing
 
 ### Database Schema
 - 17+ core tables including profiles, classes, resources, assignments, etc.
@@ -52,20 +61,40 @@ Study Hub is a full-featured educational platform designed to facilitate online 
 
 ```
 Study-Hub/
-├── index.html                 # Landing page with login/signup
-├── dashboard-student.html     # Student dashboard
-├── dashboard-teacher.html     # Teacher dashboard
-├── js/
-│   ├── auth.js               # Authentication logic
-│   ├── student-dashboard.js  # Student dashboard functionality
-│   ├── teacher-dashboard.js  # Teacher dashboard functionality
-│   ├── supabase-config.js    # Supabase client configuration
-│   └── utils.js              # Utility functions
-├── styles/
-│   ├── main.css              # Global styles
-│   └── dashboard.css         # Dashboard-specific styles
-├── complete_schema_for_ER.sql # Complete database schema
-└── study_hub_schema.dbml      # DBML format for ER diagrams
+├── index.html                    # Landing page with login/signup
+├── class.html                    # Class detail page
+├── dashboard-student.html        # Student dashboard
+├── dashboard-teacher.html        # Teacher dashboard  
+├── ai-test.html                  # AI service testing page
+├── server.js                     # Node.js server for AI proxy
+├── src/                          # React application source
+│   ├── App.tsx                   # Main React component
+│   ├── main.tsx                  # React app entry point
+│   ├── index.css                 # React app styles
+│   └── vite-env.d.ts            # Vite type definitions
+├── js/                           # Vanilla JS for interactive features
+│   ├── auth.js                   # Authentication logic
+│   ├── ai-service.js             # AI integration and content analysis
+│   ├── class-page.js             # Class page functionality
+│   ├── student-dashboard.js      # Student dashboard functionality
+│   ├── student-dashboard-fixed.js # Enhanced student dashboard
+│   ├── teacher-dashboard.js      # Teacher dashboard functionality 
+│   ├── teacher-dashboard-modern.js # Modern teacher dashboard
+│   ├── supabase-config.js        # Supabase client configuration
+│   └── utils.js                  # Utility functions and helpers
+├── styles/                       # CSS stylesheets
+│   ├── main.css                  # Global styles
+│   ├── dashboard.css             # Dashboard-specific styles
+│   ├── dashboard-modern.css      # Modern dashboard theme
+│   └── modern-theme.css          # Modern UI theme
+├── supabase/                     # Database migrations (removed for cleanup)
+├── study_hub_schema.dbml         # DBML format for ER diagrams
+├── package.json                  # Node.js dependencies and scripts
+├── vite.config.ts               # Vite build configuration
+├── tailwind.config.js           # TailwindCSS configuration
+├── tsconfig.json                # TypeScript configuration
+├── eslint.config.js             # ESLint code quality rules
+└── postcss.config.js            # PostCSS processing configuration
 ```
 
 ## 🚀 Current Implementation Status
@@ -105,14 +134,14 @@ Study-Hub/
 - Performance indexes
 
 ### 🔧 Recent Fixes Applied
-- Fixed resource loading without class_id column dependency
-- Implemented class_resources junction table
-- Fixed assignment submission modal
-- Enhanced flashcard visibility with better contrast
-- Added class homepage modal functionality
-- Fixed sidebar navigation contrast
-- Implemented comment posting system
-- Added AI assistant resource selection
+- **User Role Registration**: Fixed issue where all users defaulted to 'student' role regardless of selection
+- **AI Service Integration**: Implemented Google Gemini API with proxy server for secure key management
+- **Document Processing**: Added PDF.js and Mammoth.js for client-side document parsing
+- **Enhanced Dashboards**: Created modern dashboard variants with improved UI/UX
+- **Class Management**: Added dedicated class detail pages with tabbed navigation
+- **Build System**: Integrated Vite, TypeScript, and TailwindCSS for modern development
+- **Code Quality**: Added ESLint configuration and consistent code formatting
+- **Project Cleanup**: Removed redundant SQL files and organized database migrations
 
 ## 🎯 Key Functionalities
 
@@ -136,9 +165,14 @@ Study-Hub/
 - Progress tracking for attempts
 
 ### Study Tools
-- **Pomodoro Timer**: 25-min work, 5-min break cycles
-- **Session Tracking**: Monitor study time
-- **AI Assistant**: Generate study materials from resources
+- **Pomodoro Timer**: 25-min work, 5-min break cycles with audio notifications
+- **Session Tracking**: Monitor study time with detailed logs
+- **AI-Powered Content Analysis**: 
+  - Upload PDF/DOCX files for automatic content extraction
+  - Analyze web URLs for content summarization
+  - Generate comprehensive study plans from educational materials
+  - Create personalized flashcard sets from document content
+  - Smart content parsing with context-aware summaries
 
 ## 🔐 Security Features
 
@@ -172,13 +206,47 @@ Key tables include:
 - **Accessibility**: Semantic HTML and ARIA attributes
 - **Visual Feedback**: Loading states, success/error notifications
 
-## 🚦 Getting Started
+## 🚚 Getting Started
 
-1. **Database Setup**: Import `complete_schema_for_ER.sql` into your Supabase project
-2. **Configure Supabase**: Update `js/supabase-config.js` with your project URL and anon key
-3. **Storage Setup**: Create a bucket named "study-hub" in Supabase Storage
-4. **Deploy**: Host the files on any static web server
-5. **Test**: Create teacher and student accounts to explore features
+### Prerequisites
+- Node.js (v16+) for development and AI server
+- Supabase account for backend services
+- Google AI Studio API key for Gemini integration
+
+### Setup Instructions
+1. **Database Setup**: 
+   - Create a new Supabase project
+   - Import the schema from `study_hub_schema.dbml` or create tables manually
+   - Set up Row Level Security (RLS) policies
+
+2. **Configure Environment**:
+   - Update `js/supabase-config.js` with your Supabase project URL and anon key
+   - Set up Google AI API key in `server.js` for AI features
+
+3. **Storage Setup**: 
+   - Create a storage bucket named "study-hub" in Supabase Storage
+   - Configure public access policies for file uploads
+
+4. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+5. **Development Server**:
+   ```bash
+   # For React app development
+   npm run dev
+   
+   # For AI proxy server
+   node server.js
+   ```
+
+6. **Production Deploy**: 
+   - Build React app: `npm run build`
+   - Host static files on any web server
+   - Deploy Node.js server for AI functionality
+
+7. **Test**: Create teacher and student accounts to explore all features
 
 ## 📈 Future Enhancements
 
