@@ -44,9 +44,16 @@ async function handleLogin(event) {
             .eq('id', data.user.id)
             .maybeSingle()
         
+        const userRole = data.user.user_metadata?.role
+        const fullName = data.user.user_metadata?.full_name || data.user.email
+        
+        // If no role is found in metadata, something went wrong during signup
+        if (!userRole) {
+            throw new Error('User role not found. Please contact support.')
+        }
+        
         if (!profile) {
-            const userRole = data.user.user_metadata?.role || 'student'
-            const fullName = data.user.user_metadata?.full_name || data.user.email
+            // Create new profile
             const { error: upErr } = await window.supabase.from('profiles').insert([{
                 id: data.user.id,
                 full_name: fullName,
@@ -56,6 +63,14 @@ async function handleLogin(event) {
             }])
             if (upErr) throw upErr
             profile = { user_type: userRole }
+        } else if (profile.user_type !== userRole) {
+            // Profile exists but user_type is wrong, update it
+            const { error: updateErr } = await window.supabase
+                .from('profiles')
+                .update({ user_type: userRole })
+                .eq('id', data.user.id)
+            if (updateErr) throw updateErr
+            profile.user_type = userRole
         }
         
         // Redirect based on role
